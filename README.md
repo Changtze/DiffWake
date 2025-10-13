@@ -35,4 +35,11 @@ For details, see the accompanying paper:
 
 ---
 
-## 🧩 Repository Structure
+## 🧩 Acknowledgments
+
+This project builds upon the **Cumulative–Curl (CC)** wake formulation and reference implementation from  
+[**FLORIS**](https://github.com/NREL/floris), developed by the **National Renewable Energy Laboratory (NREL)**.  
+Some numerical components and data structures were adapted from the original FLORIS codebase (BSD-3-Clause License).  
+The FLORIS software © 2013–2025 Alliance for Sustainable Energy, LLC.  
+Source: https://github.com/NREL/floris  
+License: BSD-3-Clause (see `LICENSE_FLORIS.txt`).
