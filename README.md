@@ -5,7 +5,7 @@
 It enables, e.g,  *end-to-end gradient propagation* through wake, thrust, and power computations — supporting modern machine learning (ML) workflows, parameter inference, and gradient-based layout optimization on GPUs.
 
 <p align="center">
-  <img src="fig/wake_visualization_custom.png" width="450"/>
+  <img src="plots/wake_visualization.png" width="450"/>
 </p>
 
 ---
@@ -32,6 +32,23 @@ For details, see the accompanying paper:
 
 > *DiffWake: A General Differentiable Wind-Farm Solver in JAX*  
 > M. Bånkestad, et al. (2025)
+
+---
+
+## 🧭 TODO / Roadmap
+
+Planned features and improvements:
+
+- [ ] **Tilt angles** – not yet supported in the differentiable formulation.  
+- [ ] **Jupyter notebooks** – add example notebooks for:  
+  - gradient-based layout optimization  
+  - turbulence-intensity calibration  
+  - comparison with FLORIS baseline  
+- [ ] **PyTorch version** – experimental mirror for cross-validation.  
+- [ ] **Differentiable yaw control** – extend optimization to $\gamma_\mathrm{yaw}$.  
+- [ ] **Parameter calibration** – extend to additional CC parameters ($k_y$, $k_z$, $x_\mathrm{nw}$, $C_T$).  
+- [ ] **Improved batching** – enable large wind-rose evaluation without recompilation.  
+- [ ] **Documentation and figures** – add user guide and visual examples.
 
 ---
 

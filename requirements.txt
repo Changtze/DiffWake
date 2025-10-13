@@ -1,0 +1,12 @@
+jax==0.7.1
+jaxlib==0.7.1
+flax==0.10.6
+optax==0.2.5
+matplotlib==3.10.3
+numpy==2.1.2
+scipy==1.15.3
+tqdm==4.67.1
+
+
+# Optional: only if call toch version
+torch==2.7.1

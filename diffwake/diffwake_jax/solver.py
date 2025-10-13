@@ -1,0 +1,199 @@
+from typing import Tuple, Callable
+
+from .util import CCParams, CCDynamicState
+from.util import smooth_step
+from .wake_deflection.gauss import calculate_transverse_velocity, wake_added_yaw, yaw_added_turbulence_mixing
+import jax.numpy as jnp
+from jax import lax
+
+def average_velocity_jax(v, method="cubic-mean"):
+    if method == "simple-mean":
+        return jnp.mean(v, axis=(-2, -1), keepdims=True)
+    if method == "cubic-mean":
+        m3 = jnp.mean(v**3, axis=(-2, -1), keepdims=True)
+        return jnp.cbrt(m3)                 # exact libm cbrt, matches Torch
+    raise ValueError
+
+
+
+def cc_solver_step(
+    state: CCDynamicState,
+    ii: int,
+    params: CCParams,
+    thrust_function: Callable,
+    axial_induction_func: Callable,
+    velocity_model: Callable, 
+    deflection_model: Callable,
+    turbulence_model: Callable,
+    yaw_angles: jnp.array,
+    tilt_angles: jnp.array,
+    enable_secondary_steering: bool,
+    enable_transverse_velocities: bool,
+    enable_yaw_added_recovery: bool,
+    x_coord, y_coord, z_coord,
+    x_c, y_c, z_c,
+    u_init, dudz_init,
+    ambient_ti
+) -> Tuple[CCDynamicState, None]:
+    """One turbine-index update; identical math to PyTorch version."""
+
+    # ─── unpack state tensors ───────────────────────────────────────────
+    turb_u_wake, turb_inflow, ti, v_sorted, w_sorted, Ctmp, ct_acc = (
+        state.turb_u_wake, state.turb_inflow, state.ti,
+        state.v_sorted,      state.w_sorted,      state.Ctmp, state.ct_acc
+    )
+    # ─── constants for turbine ii ───────────────────────────────────────
+    B,T,N,N = x_coord.shape
+
+    x_i = lax.dynamic_index_in_dim(x_c, ii, axis=1, keepdims=True)
+    y_i = lax.dynamic_index_in_dim(y_c, ii, axis=1, keepdims=True)
+    z_i = lax.dynamic_index_in_dim(z_c, ii, axis=1, keepdims=True)
+
+    rad = 0.51 * params.rotor_diameter            # skalar/tensor
+    mask_i = (
+        (x_coord >  x_i - 0.01) & (x_coord < x_i + 0.01) &
+        (y_coord >  y_i - rad ) & (y_coord < y_i + rad )
+    )
+    diff = u_init - turb_u_wake                  # (B,T,N,N)
+
+    turb_inflow = jnp.where(mask_i, diff, turb_inflow)
+
+    turb_avg = average_velocity_jax(turb_inflow)
+
+    vel_avg__i  = lax.dynamic_index_in_dim(turb_avg,   ii, axis=1, keepdims=True)  # (B,1,1,1)
+    yaw_i  = lax.dynamic_index_in_dim(yaw_angles, ii, axis=1, keepdims=True)  # (B,1)
+    tilt_i = lax.dynamic_index_in_dim(tilt_angles,ii, axis=1, keepdims=True)  # (B,1)
+
+    turb_Cts_i = thrust_function(velocities = vel_avg__i,
+                               yaw_angles = yaw_i,
+                               tilt_angles = tilt_i)[:,:,None, None]        # (B,T,1,1)
+
+
+    ct_acc = lax.dynamic_update_slice_in_dim(ct_acc, turb_Cts_i, ii, axis=1)
+    turb_aIs = axial_induction_func(
+        turb_avg, yaw_angles, tilt_angles, ix_filter=ii)[:, :, None, None]       # (B,T,1,1)
+
+    turb_aIs = turb_aIs
+
+    axial_i = axial_induction_func(
+        u_init, yaw_angles, tilt_angles, ix_filter=ii)[:, None, None]
+    
+
+    u_i  = lax.dynamic_index_in_dim(turb_inflow, ii, axis=1, keepdims=True)
+    v_i  = lax.dynamic_index_in_dim(v_sorted, ii, axis=1, keepdims=True)    
+    w_i  = lax.dynamic_index_in_dim(w_sorted, ii,axis=1, keepdims=True) 
+    ti_i  = lax.dynamic_index_in_dim(ti, ii, axis=1, keepdims=True) 
+    yaw_i = yaw_i[:, :, None, None]  # Now shape is (B, 1, 1, 1)
+
+    # 3. secondary steering
+    if enable_secondary_steering:
+        y_coord_i = lax.dynamic_index_in_dim(y_coord, ii, axis=1, keepdims=True )
+        z_coord_i = lax.dynamic_index_in_dim(z_coord, ii, axis=1, keepdims=True )
+        added_yaw = wake_added_yaw(
+            u_i, v_i, u_init,
+            y_coord_i- y_i,z_coord_i,
+            params.rotor_diameter, params.hub_height,
+            turb_Cts_i, params.TSR, axial_i,
+            params.wind_shear, scale=2.0
+        )
+           
+        yaw_eff = yaw_i + added_yaw
+    else:
+        yaw_eff = yaw_i
+
+    def_field = deflection_model(
+        x_i, yaw_eff, ti_i, turb_Cts_i,
+        params.rotor_diameter,
+        x=x_coord,
+        U_free=u_init, wind_veer=params.wind_veer
+    )
+
+
+    v_wake = jnp.zeros_like(v_sorted)
+    w_wake = jnp.zeros_like(w_sorted)
+    if enable_transverse_velocities:
+        v_wake, w_wake= calculate_transverse_velocity(
+            u_i, u_init, dudz_init,
+            x_coord - x_i, y_coord - y_i, z_coord,
+            params.rotor_diameter, params.hub_height,
+            yaw_i, turb_Cts_i, params.TSR, axial_i,
+            params.wind_shear, scale=2.0
+        )
+
+
+
+    if enable_yaw_added_recovery:
+        v_wake_i = lax.dynamic_index_in_dim(v_wake, ii, axis=1, keepdims=True )
+        w_wake_i = lax.dynamic_index_in_dim(w_wake, ii, axis=1, keepdims=True )
+
+        I_mixing = yaw_added_turbulence_mixing(
+            u_i, 
+            ti_i, 
+            v_i,
+            w_i,
+            v_wake_i, 
+            w_wake_i
+            )
+        updated = I_mixing + ti_i
+        #ti = lax.dynamic_update_slice(ti, updated, (0, ii, 0, 0))
+        ti = lax.dynamic_update_slice_in_dim(ti, updated, ii, axis=1)
+        
+    turb_u_wake, Ctmp = velocity_model(
+        ii, x_i, y_i, z_i, u_i,
+        def_field, yaw_i, ti,
+        ct_acc, params.rotor_diameter,
+        turb_u_wake, Ctmp,
+        x=x_coord, y=y_coord, z=z_coord, u_initial=u_init
+    )
+    # 6. turbulence intensity
+
+    wake_added_ti = turbulence_model(
+        ambient_ti, x_coord, x_i, params.rotor_diameter, turb_aIs
+    )
+
+
+    area_overlap = 1.0 - (
+        jnp.sum(turb_u_wake <= 0.05, axis=(2, 3)) /
+        params.gr_square
+    )
+
+
+    dtype = x_coord.dtype
+    downstream_len = 15.0 * params.rotor_diameter
+    eps = jnp.asarray(1e-10, dtype)
+
+    downstream_start = x_coord > (x_i + eps)                         # bool
+    downstream_end   = x_coord <= (x_i + downstream_len - eps)       # bool
+    down_mask = (downstream_start & downstream_end).astype(dtype)    # 0/1
+
+    # ------------------------------------------------ lateral-mask
+    dy = jnp.abs(y_coord - y_i)
+    lat_mask = (dy < 2.0 * params.rotor_diameter- eps).astype(dtype)           # 0/1
+
+    # ------------------------------------------------ turbulence-bidrag
+    wake_ti = jnp.nan_to_num(wake_added_ti, nan=0.0, posinf=0.0, neginf=0.0)
+
+    # area_overlap kommer som (B,1); broadcasta till (B,1,1,1)
+    ao = area_overlap[:, :, None, None]
+
+    ti_added = ao * wake_ti * down_mask * lat_mask
+
+    # identisk formel: sqrt( ti_added² + ambient² ), sedan max med befintlig
+
+    ti = jnp.maximum(jnp.sqrt(ti_added**2 + ambient_ti**2), ti)
+
+    # ------------------------------------------------ addera sidvind-fält
+    v_sorted = v_sorted + v_wake
+    w_sorted = w_sorted + w_wake
+    next_state = CCDynamicState(
+        turb_u_wake=turb_u_wake,
+        turb_inflow=turb_inflow,
+        ti=ti,
+        v_sorted=v_sorted,
+        w_sorted=w_sorted,
+        Ctmp=Ctmp,
+        ct_acc = ct_acc
+    )
+    return next_state, None
+
+
