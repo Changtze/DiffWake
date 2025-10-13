@@ -1,7 +1,8 @@
 # DiffWake: A Differentiable Wind-Farm Solver in JAX
 
 **DiffWake** is a fully differentiable implementation of the **Cumulative–Curl (CC)** wake model for wind-farm flow simulation, written in [JAX](https://github.com/google/jax).  
-It enables *end-to-end gradient propagation* through wake, thrust, and power computations — supporting modern machine learning (ML) workflows, parameter inference, and gradient-based layout optimization on GPUs.
+
+It enables, e.g,  *end-to-end gradient propagation* through wake, thrust, and power computations — supporting modern machine learning (ML) workflows, parameter inference, and gradient-based layout optimization on GPUs.
 
 <p align="center">
   <img src="fig/wake_visualization_custom.png" width="450"/>
