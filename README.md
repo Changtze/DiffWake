@@ -19,7 +19,8 @@ If you use **DiffWake** in scientific work, please cite:
 
 > **M. Bånkestad, L. Sütfeld, A. Pirinen, H. Abedi (2025).**  
 > *DiffWake: A General Differentiable Wind-Farm Solver in JAX.*  
-> 1st Workshop on Differentiable Systems and Scientific Machine Learning, EurIPS 2025.
+> 1st Workshop on Differentiable Systems and Scientific Machine Learning, EurIPS 2025.  
+> **OpenReview:** https://openreview.net/forum?id=PNvRJuxzmi
 
 **BibTeX**
 ```bibtex
@@ -27,7 +28,8 @@ If you use **DiffWake** in scientific work, please cite:
   title={DiffWake: A General Differentiable Wind-Farm Solver in JAX},
   author={B{\aa}nkestad, Maria and S{\"u}tfeld, Leon and Pirinen, Aleksis and Abedi, Hamidreza},
   booktitle={1st Workshop on Differentiable Systems and Scientific Machine Learning at EurIPS},
-  year={2025}
+  year={2025},
+  url={https://openreview.net/forum?id=PNvRJuxzmi}
 }
 ```
 Link is comming soon.
