@@ -1,3 +1,4 @@
+
 # DiffWake: A General Differentiable Wind-Farm Solver in JAX
 
 **DiffWake** is a fully differentiable implementation of the **Cumulative–Curl (CC)** wake model for wind-farm flow simulation, written in [JAX](https://github.com/google/jax).  
@@ -34,21 +35,54 @@ For details, see the accompanying paper:
 > M. Bånkestad, et al. (2025)
 
 ---
+## ▶️ Run Layout Optimization (L-BFGS + Zoom)
+
+DiffWake includes a differentiable layout-optimization.
+
+### Example: Optimize the Horns Rev wind farm
+
+>python optimize_layout.py \
+>  --data-dir data/horn \
+>  --farm-yaml cc_hornsRev.yaml \
+>  --turbine-yaml vestas_v802MW.yaml \
+>  --weather-npz weather_data.npz \
+>  --init-mode perturb \
+>  --restarts 3 \
+ > --maxiter 200 \
+>  --float64
+
+---
+
+## 🧩 Requirements
+
+To run DiffWake, you need **Python ≥ 3.10** and the following dependencies:
+
+| Package | Purpose |
+|----------|----------|
+| `jax` and `jaxlib` | Differentiable array operations and JIT compilation |
+| `optax` | Optimizers (e.g., L-BFGS, Adam) |
+| `torch` | Used for differentiable model components |
+| `numpy` | Numerical utilities |
+| `pyyaml` | Reading YAML configuration files |
+| `pyDOE` | Latin Hypercube Sampling for initialization |
+| `matplotlib` *(optional)* | Plotting and visualization |
+| `tqdm` *(optional)* | Progress bars for experiments |
+---
 
 ## 🧭 TODO / Roadmap
 
 Planned features and improvements:
 
-- [ ] **Tilt angles** – not yet supported in the differentiable formulation.  
-- [ ] **Jupyter notebooks** – add example notebooks for:  
+- **Tilt angles** – not yet supported in the differentiable formulation.  
+- **Jupyter notebooks** – add example notebooks for:  
   - gradient-based layout optimization  
   - turbulence-intensity calibration  
   - comparison with FLORIS baseline  
-- [ ] **PyTorch version** – experimental mirror for cross-validation.  
-- [ ] **Differentiable yaw control** – extend optimization to $\gamma_\mathrm{yaw}$.  
-- [ ] **Parameter calibration** – extend to additional CC parameters ($k_y$, $k_z$, $x_\mathrm{nw}$, $C_T$).  
-- [ ] **Improved batching** – enable large wind-rose evaluation without recompilation.  
-- [ ] **Documentation and figures** – add user guide and visual examples.
+-  **PyTorch version** – experimental mirror for cross-validation.  
+- **Differentiable yaw control** – extend optimization to $\gamma_\mathrm{yaw}$.  
+-  **Parameter calibration** – extend to additional CC parameters ($k_y$, $k_z$, $x_\mathrm{nw}$, $C_T$).  
+-  **Improved batching** – enable large wind-rose evaluation without recompilation.  
+-  **Documentation and figures** – add user guide and visual examples.
 
 ---
 
