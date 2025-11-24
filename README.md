@@ -1,45 +1,69 @@
-
 # DiffWake: A General Differentiable Wind-Farm Solver in JAX
 
 **DiffWake** is a fully differentiable implementation of the **Cumulative–Curl (CC)** wake model for wind-farm flow simulation, written in [JAX](https://github.com/google/jax).  
 
-It enables, e.g,  *end-to-end gradient propagation* through wake, thrust, and power computations — supporting modern machine learning (ML) workflows, parameter inference, and gradient-based layout optimization on GPUs.
+It provides *end-to-end gradients* through wake, thrust, and power calculations, enabling modern machine-learning workflows, uncertainty quantification, and gradient-based layout optimization on GPUs/TPUs.
 
 <p align="center">
   <img src="plots/wake_visualization.png" width="450"/>
 </p>
 
----
 
-## 🚀 Key Features
-- **Fully differentiable CC wake model** – exact reverse-mode gradients through all wake, thrust, and power computations.  
-- **Physics-consistent formulation** – reproduces the analytic CC equations from [Martínez-Tossas et al. 2019](https://doi.org/10.1016/j.energy.2019.116148) and [Bay et al. 2023](https://doi.org/10.5194/wes-8-401-2023).  
-- **Compiled tensor operations** – implemented using `jax.lax.fori_loop` for stable, efficient GPU execution.  
-- **Batchable evaluation** – run multiple wind speeds, directions, or parameter sets in parallel.  
-- **Gradient-based optimization** – compatible with optimizers such as L-BFGS, Adam, or custom differentiable design loops.  
-- **Probabilistic parameter inference** – includes an example for learning turbulence intensity (TI) distributions from SCADA data.  
+> **Work in progress:** The codebase is being actively reorganized and parts of the functionality may not yet be stable or fully implemented.  
 
 ---
 
-## 📘 Background
+## Citation
 
-Traditional wake models are efficient but not differentiable, limiting their use in modern gradient-based optimization and ML frameworks.  
-**DiffWake** bridges that gap by rewriting the Cumulative–Curl (CC) model in pure JAX — allowing:
-- Gradient-based layout and control optimization.
-- End-to-end parameter calibration directly from observed turbine power.
-- Integration with probabilistic or deep-learning models.
+If you use **DiffWake** in scientific work, please cite:
 
-For details, see the accompanying paper:
+> **M. Bånkestad, L. Sütfeld, A. Pirinen, H. Abedi (2025).**  
+> *DiffWake: A General Differentiable Wind-Farm Solver in JAX.*  
+> 1st Workshop on Differentiable Systems and Scientific Machine Learning, EurIPS 2025.
 
-> *DiffWake: A General Differentiable Wind-Farm Solver in JAX*  
-> M. Bånkestad, et al. (2025)
+**BibTeX**
+```bibtex
+@inproceedings{bankestad2025diffwake,
+  title={DiffWake: A General Differentiable Wind-Farm Solver in JAX},
+  author={B{\aa}nkestad, Maria and S{\"u}tfeld, Leon and Pirinen, Aleksis and Abedi, Hamidreza},
+  booktitle={1st Workshop on Differentiable Systems and Scientific Machine Learning at EurIPS},
+  year={2025}
+}
+```
+Link is comming soon.
 
 ---
-## ▶️ Run Layout Optimization (L-BFGS + Zoom)
 
-DiffWake includes a differentiable layout-optimization.
+## Key Features
 
-### Example: Optimize the Horns Rev wind farm
+- **Fully differentiable Cumulative–Curl (CC) wake model**  
+  Provides exact reverse-mode gradients through wake, thrust, and power computations.
+
+- **Physics-grounded formulation**  
+  Implements the Gaussian–curl wake model from  
+  [Martínez-Tossas, Churchfield & Meneveau (2019)](https://doi.org/10.5194/wes-4-521-2019)  
+  and the multi-turbine cumulative coupling from  
+  [Bay et al. (2023)](https://doi.org/10.5194/wes-8-401-2023).
+
+- **Compiled and efficient tensor operations**  
+  Uses `jax.lax.fori_loop` and JIT compilation for stable, fast GPU/TPU execution.
+
+- **Batchable evaluation**  
+  Supports simultaneous computation across many wind speeds, directions, layouts, or parameter sets.
+
+- **Gradient-based optimization support**  
+  Compatible with L-BFGS, Adam, Optax, and custom differentiable control/optimization loops.
+
+- **Differentiable parameter inference**  
+  Includes examples for learning turbulence-intensity (TI) distributions and other inflow parameters from SCADA data.
+
+
+---
+##  Run Layout Optimization (L-BFGS)
+
+DiffWake includes a built-in differentiable layout optimizer.
+
+Example: optimize the Horns Rev wind farm:
 
 >python optimize_layout.py \
 >  --data-dir data/horn \
@@ -53,7 +77,7 @@ DiffWake includes a differentiable layout-optimization.
 
 ---
 
-## 🧩 Requirements
+## Requirements
 
 To run DiffWake, you need **Python ≥ 3.10** and the following dependencies:
 
