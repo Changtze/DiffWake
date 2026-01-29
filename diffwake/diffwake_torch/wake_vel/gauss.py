@@ -2,14 +2,29 @@ import torch
 from torch import nn
 from typing import Any, Dict
 
-def sind(angle):
+def cosd(angle):
     """
     Cosine of an angle with the angle given in degrees.
-    Args:
-        angle (float): angle in degrees
-    :param angle:
-    :return:
+    :param angle: (float) angle in degrees
+    :return: float
     """
+    return torch.cos(torch.deg2rad(angle))
+
+def sind(angle):
+    """
+    Sine of an angle with the angle given in degrees.
+    :param angle: (float) angle in degrees
+    :return: float
+    """
+    return torch.sin(torch.deg2rad(angle))
+
+def tand(angle):
+    """
+    Tangent of an angle with the angle given in degrees.
+    :param angle: (float) angle in degrees
+    :return: float
+    """
+    return torch.tan(torch.deg2rad(angle))
 
 def safe_sqrt(x: torch.Tensor, eps: float = 1e-9) -> torch.Tensor:
     return torch.sqrt(torch.clamp(x, min=eps))
@@ -25,6 +40,21 @@ def mask_upstream_wake(mesh_y_rotated: torch.Tensor,
     xR = yR * torch.tan(torch.rad2deg(turbine_yaw)) + x_coord_rotated
 
     return xR, yR
+
+def rC(wind_veer,
+       sigma_y,
+       sigma_z,
+       y,
+       y_i,
+       delta,
+       z,
+       HH,
+       Ct,
+       yaw,
+       D):
+
+    pass
+
 
 class GaussVelocityDeficit(nn.Module):
     def __init__(self,
@@ -69,7 +99,57 @@ class GaussVelocityDeficit(nn.Module):
 
         # Initialise lateral bounds
         sigma_z0 = rotor_diameter_i * 0.5 * safe_sqrt(uR / (u_initial + u0))
-        sigma_y0 = sigma_z0 *
+        sigma_y0 = sigma_z0 * cosd(yaw_angle) * cosd(wind_veer)
+
+        # Compute bounds of the near and far wake regions and a mask
+
+        # Start of the near wake
+        xR = x_i.clone()
+
+        # Start of the far wake
+        x0 = torch.ones_like(u_initial)
+        x0 *= rotor_diameter_i * cosd(yaw_angle) * (1 + safe_sqrt(1 - ct_i))
+        x0 /= torch.sqrt(torch.tensor([2])) * (
+            4.0 * self.alpha * turbulence_intensity_i + 2 * self.beta * (1 - safe_sqrt(1 - ct_i))
+        )
+        x0 += x_i
+
+        # Initialise velocit deficit array
+        velocity_deficit = torch.zeros_like(u_initial)
+
+        # Masks
+        # When we have only an inequality, the current turbine may be applied its own
+        # wake in cases where numerical precision cause in incorrect comparison. We've
+        # applied a small bump to avoid this. "0.1" is arbitrary but it is a small, non
+        # zero value.
+
+        # This mask defines the near wake; keeps the areas downstream of xR and upstream of x0
+        near_wake_mask = (x > xR + 0.1) * (x < x0)
+        far_wake_mask = (x >= x0)
+
+        # Compute the velocity deficit in the near wake region
+        # ONLY if there are points within the near wake boundary
+        if torch.sum(near_wake_mask):
+            # Calculate wake expansion
+            # Linear ramp from 0 to 1 from the start of the near wake to the start of the fear wake
+            near_wake_ramp_up = (x - xR) / (x0 - xR)
+
+            # Another linear ramp, but positive upstream of the far wake and negative in the far wake;
+            # 0 at the start of the far wake
+            near_wake_ramp_down = (x0 - x) / (x0 - xR)
+
+            sigma_y = near_wake_ramp_down * 0.501 * rotor_diameter_i * safe_sqrt(ct_i / 2.0)
+            sigma_y += near_wake_ramp_up * sigma_y0
+            sigma_y *= (x >= xR)
+            sigma_y += torch.ones_like(sigma_y) * (x < xR) * 0.5 * rotor_diameter_i
+
+            sigma_z = near_wake_ramp_down * 0.501 * rotor_diameter_i * safe_sqrt(ct_i / 2.0)
+            sigma_z += near_wake_ramp_up * sigma_z0
+            sigma_z *= (x >= xR)
+            sigma_z += torch.ones_like(sigma_z) * (x < xR) * 0.5 * rotor_diameter_i
+
+
+
 
         pass
 
