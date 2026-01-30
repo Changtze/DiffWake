@@ -52,8 +52,28 @@ def rC(wind_veer,
        Ct,
        yaw,
        D):
+    a = cosd(wind_veer) ** 2 / (2 * sigma_y ** 2) + sind(wind_veer) ** 2 / (2 * sigma_z ** 2)
+    b = -sind(2 * wind_veer) / (4 * sigma_y ** 2) + sind(2 * wind_veer) / (4 * sigma_z ** 2)
+    c = sind(wind_veer) ** 2 / (2 * sigma_y ** 2) + cosd(wind_veer) ** 2 / (2 * sigma_z ** 2)
+    r = (
+        a * (y - y_i - delta) ** 2
+        - 2 * b * (y - y_i - delta) * (z - HH)
+        + c * (z - HH) ** 2
+    )
+    C = 1 - safe_sqrt(torch.clip(1 - (Ct * cosd(yaw) / (8.0 * sigma_y * sigma_z / D ** 2)), 0.0, 1.0))
 
-    pass
+    # Precalculate some parts
+    twox_sigmay_2 = 2 * sigma_y ** 2
+    twox_sigmaz_2 = 2 * sigma_z ** 2
+    a = cosd(wind_veer) ** 2 / (twox_sigmay_2) + sind(wind_veer) ** 2 / (twox_sigmaz_2)
+    b = -sind(2 * wind_veer) / (2 * twox_sigmay_2) + sind(2 * wind_veer) / (2 * twox_sigmaz_2)
+    c = sind(wind_veer) ** 2 / (twox_sigmay_2) + cosd(wind_veer) ** 2 / (twox_sigmaz_2)
+    delta_y = y - y_i - delta
+    delta_z = z - HH
+    r = (a * (delta_y ** 2) - 2 * b * (delta_y) * (delta_z) + c * (delta_z ** 2))
+    C = 1 - safe_sqrt(torch.clip(1 - (Ct * cosd(yaw) / (8.0 * sigma_y * sigma_z / (D * D))), 0.0, 1.0))
+
+    return r, C
 
 
 class GaussVelocityDeficit(nn.Module):
@@ -148,9 +168,51 @@ class GaussVelocityDeficit(nn.Module):
             sigma_z *= (x >= xR)
             sigma_z += torch.ones_like(sigma_z) * (x < xR) * 0.5 * rotor_diameter_i
 
+            r, C = rC(
+                wind_veer,
+                sigma_y,
+                sigma_z,
+                y,
+                y_i,
+                deflection_field_i,
+                z,
+                hub_height_i,
+                ct_i,
+                yaw_angle,
+                rotor_diameter_i,
+            )
+
+            near_wake_deficit = gaussian_function(C, r, 1, safe_sqrt(0.5))
+            near_wake_deficit *= near_wake_mask
+
+            velocity_deficit += near_wake_deficit
+
+            if torch.sum(far_wake_mask):
+                ky = self.ka * turbulence_intensity_i + self.kb  # wake expansion parameters
+                kz = self.ka * turbulence_intensity_i + self.kb  # wake expansion parameters
+                sigma_y = (ky * (x - x0) + sigma_y0) * far_wake_mask + sigma_y0 * (x < x0)
+                sigma_z = (kz * (x - x0) + sigma_z0) * far_wake_mask + sigma_z0 * (x < x0)
+
+                r, C = rC(
+                    wind_veer,
+                    sigma_y,
+                    sigma_z,
+                    y,
+                    y_i,
+                    deflection_field_i,
+                    z,
+                    hub_height_i,
+                    ct_i,
+                    yaw_angle,
+                    rotor_diameter_i
+                )
+
+                far_wake_deficit = gaussian_function(C, r, 1, safe_sqrt(0.5))
+                far_wake_deficit *= far_wake_mask
+                velocity_deficit += far_wake_deficit
+
+            return velocity_deficit
 
 
-
-        pass
 
 
