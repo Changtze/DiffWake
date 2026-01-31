@@ -351,8 +351,10 @@ def main():
     # Initial reference layout for perturb mode (use farm cfg layout)
     ref_layout = jnp.column_stack(
         [
-            jnp.asarray(state.farm.layout["layout_x"], dtype=DTYPE),
-            jnp.asarray(state.farm.layout["layout_y"], dtype=DTYPE),
+            # jnp.asarray(state.farm.layout["layout_x"], dtype=DTYPE),
+            # jnp.asarray(state.farm.layout["layout_y"], dtype=DTYPE),
+            jnp.asarray(state.farm.layout_x, dtype=DTYPE),
+            jnp.asarray(state.farm.layout_y, dtype=DTYPE),
         ]
     )
 

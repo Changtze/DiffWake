@@ -10,6 +10,7 @@ from typing import Callable, Any, Optional,NamedTuple,Dict
 from .turbine.turbine import thrust_coefficient, axial_induction
 from jax import lax, config
 from jax.tree_util import tree_map
+from .interp1d import interp1d
 
 # ---------- helpers --------------------------------------------------------
 def _to_jax(pytree):
@@ -335,21 +336,4 @@ def set_cfg(cfg,
         flow_field=flow_field,
         layout=layout,
     )
-    
-def interp1d(x, y, xnew):
-    indices = jnp.searchsorted(x, xnew, side="right")
-    indices = jnp.clip(indices, 1, x.shape[0] - 1)
 
-    x0 = x[indices - 1]
-    x1 = x[indices]
-    y0 = y[indices - 1]
-    y1 = y[indices]
-
-    slope = (y1 - y0) / (x1 - x0 + 1e-16)
-    ynew = y0 + slope * (xnew - x0)
-
-    # Clamp xnew outside x-range
-    ynew = jnp.where(xnew < x[0], y[0], ynew)
-    ynew = jnp.where(xnew > x[-1], y[-1], ynew)
-
-    return ynew

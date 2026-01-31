@@ -1,5 +1,5 @@
 import torch
-from ..util.interp1d import interp1d
+from ..interp1d import interp1d
 POWER_SETPOINT_DEFAULT = 1e12
 
 from typing import Callable, Optional, Dict, Tuple
