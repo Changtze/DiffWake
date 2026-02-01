@@ -21,6 +21,22 @@ def index_dtype():
     return jnp.int64 if config.x64_enabled else jnp.int32
 
 @struct.dataclass
+class GCHConfig:
+    generator: Dict
+    farm: Dict
+    flow_field: Dict
+    layout: Dict
+    def set(self, **kwargs):
+        return set_cfg(self, **kwargs)
+
+@struct.dataclass
+class GCHSTate:
+    farm: Farm
+    grid: TurbineGrid
+    flow: FlowField
+    wake: WakeModelManager
+
+@struct.dataclass
 class CCConfig:
     generator: Dict
     farm: Dict
@@ -86,6 +102,23 @@ def smooth_box(x, centre, half, inv_w=2.0):
     s2 = lax.sigmoid((x - (centre + half)) * inv_w)
     return s1 * (1.0 - s2)
 
+@struct.dataclass
+class GCHParams:
+    B: int
+    T: int
+    rotor_diameter: float
+    hub_height: float
+    TSR: float
+    wind_shear: float
+    wind_veer: float
+    gr_square: float  # Ny * Nz
+    enable_secondary_steering: bool = False
+    enable_transverse_velocities: bool = False
+    enable_yaw_added_recovery: bool = False
+
+class GCHResult:
+    turb_u_wake: jnp.ndarray
+    u_sorted: jnp.ndarrya
 
 @struct.dataclass
 class CCParams:
