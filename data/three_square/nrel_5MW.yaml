@@ -11,42 +11,15 @@
 # String type.
 
 # TO-DO: maybe this needs changing from string type
-turbine_type: 'nrel_5MW'
-
-###
-# Turbine hub height in meters. Float type.
+turbine_type: nrel_5MW
 hub_height: 90.0
-
-###
-# Turbine rotor diameter in meters. Float type.
 rotor_diameter: 125.88
-
-###
-# Nominal wind turbine tip-speed ratio for below-rated operation. Only used in some wake models.
-# Float type.
 TSR: 8.0
-
-###
-# Model for power and thrust curve interpretation. See floris.core.turbine.operation_models for
-# details. String type.
 operation_model: cosine-loss
-
-###
-# Group of parameters needed to evaluate the power and thrust produced by the turbine.
 power_thrust_table:
-  ###
-  # Air density at which the power and thrust_coefficient curves are defined (kg / m^3). Float type.
   ref_air_density: 1.225
-  ###
-  # Tilt angle at which the power and thrust_coefficient curves are defined (degrees).
-  # Used to capture the effects of a floating platform on a turbine's power and wake.
-  # Float type.
   ref_tilt: 5.0
-  ###
-  # Cosine exponent for power loss due to tilt. Float type.
   cosine_loss_exponent_tilt: 1.88
-  ###
-  # Cosine exponent for power loss due to yaw misalignment. Float type.
   cosine_loss_exponent_yaw: 1.88
   ###
   # Helix parameter a. See documentation for details. Float type.
