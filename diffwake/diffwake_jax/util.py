@@ -118,7 +118,7 @@ class GCHParams:
 
 class GCHResult:
     turb_u_wake: jnp.ndarray
-    u_sorted: jnp.ndarrya
+    u_sorted: jnp.ndarray
 
 @struct.dataclass
 class CCParams:
