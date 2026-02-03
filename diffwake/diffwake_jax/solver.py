@@ -1,6 +1,6 @@
 from typing import Tuple, Callable
 
-from .util import CCParams, CCDynamicState
+from .util import CCParams, CCDynamicState, GCHDynamicState
 from.util import smooth_step
 from .wake_deflection.gauss import calculate_transverse_velocity, wake_added_yaw, yaw_added_turbulence_mixing
 import jax.numpy as jnp
@@ -34,6 +34,8 @@ def sequential_solve_step(
         u_init, dudz_init,
         ambient_ti
         ) -> Tuple[GCHDynamicState, None]:
+    """One turbine-index update; identical math to PyTorch version."""
+
 
     pass
 

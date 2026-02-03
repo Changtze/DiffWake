@@ -142,6 +142,17 @@ class CCResult(NamedTuple):
     v_sorted: jnp.ndarray
     w_sorted: jnp.ndarray
 
+
+# Not sure if a dynamic state class is needed for GCH
+@struct.dataclass
+class GCHDynamicState:
+    turb_u_wake: jnp.ndarray
+    turb_inflow: jnp.ndarray
+    ti:          jnp.ndarray
+    v_sorted:    jnp.ndarray
+    w_sorted:    jnp.ndarray
+
+
 @struct.dataclass
 class CCDynamicState:
     turb_u_wake: jnp.ndarray     # (B,T,Ny,Nz)
