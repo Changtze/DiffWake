@@ -14,6 +14,29 @@ def average_velocity_jax(v, method="cubic-mean"):
         return jnp.cbrt(m3)                 # exact libm cbrt, matches Torch
     raise ValueError
 
+
+def sequential_solve_step(
+        state,
+        ii,
+        params,
+        thrust_function,
+        axial_induction_func,
+        velocity_model,
+        deflection_model,
+        turbulence_model,
+        yaw_angles,
+        titl_angles,
+        enable_secondary_steering,
+        enable_transverse_velocities,
+        enable_yaw_added_recovery,
+        x_coord, y_coord, z_coord,
+        x_c, y_c, z_c,
+        u_init, dudz_init,
+        ambient_ti
+        ) -> Tuple[GCHDynamicState, None]:
+
+    pass
+
 def cc_solver_step(
     state: CCDynamicState,
     ii: int,

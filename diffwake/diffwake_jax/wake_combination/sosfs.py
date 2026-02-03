@@ -1,13 +1,26 @@
 import jax.numpy as jnp
 from typing import Any, Dict
 
+from attrs import define
+
+
+@define
 class SOSFS:
-
-    def __init__(self):
-        pass  
     def prepare_function(self) -> Dict[str, Any]:
-        return {}
+        pass
 
-    def __call__(self, wake_field: jnp.ndarray, velocity_field: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, wake_field: jnp.ndarray,
+                 velocity_field: jnp.ndarray) -> jnp.ndarray:
+        """
+        Combines the base flow field with the velocity deficits using sum of squares.
 
-        return jnp.sqrt(wake_field**2 + velocity_field**2)
+        Args:
+            wake_field (jnp.ndarray): the wake to apply to the base flow field.
+            velocity_field (jnp.ndarray): base flow field.
+        Returns:
+            jnp.ndarray: Resulting flow field after applying the wake to the base
+            NOTE: according to JAX documentation, jnp.hypot is a more numerically stable way of computing
+            jnp.sqrt(x1 ** 2 + x2 ** 2)
+        """
+
+        return jnp.hypot(wake_field, velocity_field)

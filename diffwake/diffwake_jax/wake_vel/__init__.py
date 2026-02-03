@@ -1,0 +1,2 @@
+from culm_gauss import CumulativeGaussCurlVelocityDeficit, CumulativeGaussCurlVelocityDeficitAsBs
+from gauss import GaussVelocityDeficit
