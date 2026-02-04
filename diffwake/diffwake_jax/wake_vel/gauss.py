@@ -60,7 +60,7 @@ class GaussVelocityDeficit:
         turbulence_intensity_i: jnp.ndarray,
         ct_i: jnp.ndarray,
         hub_height_i: float,
-        rotor_diameter_i: jnp.ndarray,
+        rotor_diameter_i: float,
         *,
         x: jnp.ndarray,
         y: jnp.ndarray,
@@ -165,6 +165,6 @@ class GaussVelocityDeficit:
 
             velocity_deficit += far_wake_mask
 
-        return near_wake_deficit + far_wake_deficit
+        return velocity_deficit
 
 

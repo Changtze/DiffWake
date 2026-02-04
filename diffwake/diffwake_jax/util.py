@@ -30,7 +30,7 @@ class GCHConfig:
         return set_cfg(self, **kwargs)
 
 @struct.dataclass
-class GCHSTate:
+class GCHState:
     farm: Farm
     grid: TurbineGrid
     flow: FlowField
@@ -102,6 +102,7 @@ def smooth_box(x, centre, half, inv_w=2.0):
     s2 = lax.sigmoid((x - (centre + half)) * inv_w)
     return s1 * (1.0 - s2)
 
+
 @struct.dataclass
 class GCHParams:
     B: int
@@ -116,9 +117,12 @@ class GCHParams:
     enable_transverse_velocities: bool = False
     enable_yaw_added_recovery: bool = False
 
-class GCHResult:
+class GCHResult(NamedTuple):
     turb_u_wake: jnp.ndarray
     u_sorted: jnp.ndarray
+    ti: jnp.ndarray
+    v_sorted: jnp.ndarray
+    w_sorted: jnp.ndarray
 
 @struct.dataclass
 class CCParams:
@@ -143,7 +147,6 @@ class CCResult(NamedTuple):
     w_sorted: jnp.ndarray
 
 
-# Not sure if a dynamic state class is needed for GCH
 @struct.dataclass
 class GCHDynamicState:
     turb_u_wake: jnp.ndarray
