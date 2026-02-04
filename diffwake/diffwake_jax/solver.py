@@ -236,8 +236,6 @@ def sequential_solve_step(
     return next_state, None
 
 
-
-
 def cc_solver_step(
     state: CCDynamicState,
     ii: int,

@@ -51,6 +51,7 @@ class CCState:
     grid: TurbineGrid     # immutable
     flow: FlowField       # uses .replace() for updates
     wake: WakeModelManager
+    # yaw_angles: jnp.ndarray     # Not sure what this should be
 
 
 def average_velocity_jax(v, method="cubic-mean"):

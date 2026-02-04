@@ -2,11 +2,11 @@ from flax import struct
 from typing import Any
 import attrs
 from attrs import define, field
-from wake_combination import SOSFS
-from wake_vel import GaussVelocityDeficit, CumulativeGaussCurlVelocityDeficit
-from wake_deflection import GaussVelocityDeflection
-from wake_turbulence import CrespoHernandez
 
+from .wake_combination import SOSFS
+from .wake_vel import GaussVelocityDeficit, CumulativeGaussCurlVelocityDeficit
+from .wake_deflection import GaussVelocityDeflection
+from .wake_turbulence import CrespoHernandez
 
 
 MODEL_MAP = {
@@ -31,7 +31,7 @@ class WakeModelManager:
     velocity_model: Any         
     deflection_model: Any
     turbulence_model: Any
-    combination_model: Any
+    # combination_model: Any  # Re-enable for other wake models. Future thing to do
 
     enable_secondary_steering: bool = field(converter=bool, default=False)
     enable_yaw_added_recovery: bool = field(converter=bool, default=False)

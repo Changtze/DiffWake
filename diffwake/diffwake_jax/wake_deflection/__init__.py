@@ -1,1 +1,1 @@
-from gauss import GaussVelocityDeflection
+from .gauss import GaussVelocityDeflection

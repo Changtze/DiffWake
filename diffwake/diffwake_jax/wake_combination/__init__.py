@@ -1,1 +1,1 @@
-from sosfs import SOSFS
+from .sosfs import SOSFS

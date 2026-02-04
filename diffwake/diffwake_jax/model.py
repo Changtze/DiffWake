@@ -20,8 +20,6 @@ from .wake import WakeModelManager
 POWER_SETPOINT_DEFAULT = 1.e12
 
 
-
-
 def load_input( farm_path: Path, generator_path: Path):
     farm_dict = load_yaml(farm_path)
     generator_dict = load_yaml(generator_path)
@@ -102,6 +100,7 @@ def create_state(cfg: CCConfig, learn_as_bs = False):
     grid = create_grid(cfg.layout, cfg.generator, cfg.farm, cfg.flow_field)
     farm = create_farm(cfg.layout, cfg.generator, grid.sorted_indices)
     flow = create_flow_field(cfg.flow_field, grid)
+
     return CCState(farm, grid, flow, wake)
 
 def alter_yaw_angles(yaw_angles, state):
