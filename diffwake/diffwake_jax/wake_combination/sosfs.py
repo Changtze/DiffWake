@@ -1,13 +1,15 @@
 import jax.numpy as jnp
 from typing import Any, Dict
+from flax import struct
 
-from attrs import define
 
-
-@define
+@struct.dataclass
 class SOSFS:
     def prepare_function(self) -> Dict[str, Any]:
-        pass
+        """
+        Nothing to do here, just for API compatibility
+        """
+        return {}
 
     def __call__(self, wake_field: jnp.ndarray,
                  velocity_field: jnp.ndarray) -> jnp.ndarray:

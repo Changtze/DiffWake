@@ -1,10 +1,7 @@
 import jax.numpy as jnp
-from flax import struct
 import math
+from flax import struct
 
-import jax.numpy as jnp
-import math
-from flax import struct
 
 @struct.dataclass
 class GaussVelocityDeflection:
@@ -85,7 +82,7 @@ class GaussVelocityDeflection:
         delta_far = delta0 + mult * log_t + (ad + bd * (x - x_i))
         delta_far = jnp.where(mask_far, delta_far, jnp.zeros_like(delta_far))
 
-        return (delta_near + delta_far)
+        return delta_near + delta_far
 
 
 def gamma(D, velocity, Uinf, Ct, scale=1.0):
