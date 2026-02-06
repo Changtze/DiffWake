@@ -419,3 +419,12 @@ def cc_solver_step(
     return next_state, None
 
 
+def turbopark_solver() -> Tuple[DynamicState, None]:
+    # Needs writing
+    pass
+
+
+def empirical_gauss_solver() -> Tuple[DynamicState, None]:
+    # Needs writing
+    pass
+
