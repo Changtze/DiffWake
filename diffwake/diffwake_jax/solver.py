@@ -17,7 +17,7 @@ def average_velocity_jax(v, method="cubic-mean"):
 
 
 def sequential_solve_step(
-        state: DynamicState,
+        state: GCHDynamicState,
         ii: int,
         params: GCHParams,
         thrust_function: Callable,

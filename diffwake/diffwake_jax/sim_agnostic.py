@@ -6,11 +6,7 @@ from jax         import lax, jit
 
 import jax.numpy as jnp
 
-from .util_agnostic import (
-    init_dynamic_state, Params, DynamicState,
-    Result, State,
-    get_axial_induction_fn, get_thrust_fn,
-    make_params, to_result,make_constants
+from .util_agnostic import (init_dynamic_state, Params, DynamicState,Result, State,get_axial_induction_fn, get_thrust_fn, make_params, to_result,make_constants
 
 )
 from .solver import cc_solver_step
@@ -67,8 +63,10 @@ def simulate_simp(state: State) -> Result:
                              thrust_fn,
                              axial_fn,
                              state.wake.velocity_model,
+                             state.wake.model_strings['velocity_model'],
                              state.wake.deflection_model,
-                             state.wake.turbulence_model, 
+                             state.wake.turbulence_model,
+                             state.wake.combination_model,
                              yaw_angles,
                              tilt_angles,
                              const, 
@@ -84,19 +82,20 @@ def _simulate(T: int,
             thrust_function: Callable,
             axial_induction_func:Callable,
             velocity_model:  Callable,
+            velocity_model_name: str,
             deflection_model: Callable,
-            turbulence_model: Callable, 
+            turbulence_model: Callable,
+            combination_model: Callable,
             yaw_angles:jnp.array,
             tilt_angles:jnp.array,
             const: dict,
-            state: State,
+            state: DynamicState,
             enable_secondary_steering: bool,
             enable_transverse_velocities: bool,
             enable_yaw_added_recovery: bool,):
 
-    wake_vel_model = state.wake.model_strings['velocity_model']
 
-    if wake_vel_model == "cc":
+    if velocity_model_name == "cc":
         for i in range(T):
             state, _ = cc_solver_step(state, i, params,thrust_function,
                                       axial_induction_func,velocity_model,
@@ -106,7 +105,7 @@ def _simulate(T: int,
                                       enable_transverse_velocities=enable_transverse_velocities,
                                       enable_yaw_added_recovery=enable_yaw_added_recovery)
 
-    elif wake_vel_model == 'gauss':
+    elif velocity_model_name == 'gauss':
         state, _ = sequential_solve_step(state=state, ii=T,
                                          params=params,
                                          thrust_function=thrust_function,
@@ -114,6 +113,7 @@ def _simulate(T: int,
                                          velocity_model=velocity_model,
                                          deflection_model=deflection_model,
                                          turbulence_model=turbulence_model,
+                                         combination_model=combination_model,
                                          yaw_angles=yaw_angles,
                                          tilt_angles=tilt_angles,
                                          **const,
@@ -121,10 +121,10 @@ def _simulate(T: int,
                                          enable_yaw_added_recovery=enable_yaw_added_recovery,
                                          enable_transverse_velocities=enable_transverse_velocities)
 
-    elif wake_vel_model == "turbopark":
+    elif velocity_model_name == "turbopark":
         state, _ = turbopark_solver()
 
-    elif wake_vel_model == "empirical_gauss":
+    elif velocity_model_name == "empirical_gauss":
         state, _ = empirical_gauss_solver()
 
     return state

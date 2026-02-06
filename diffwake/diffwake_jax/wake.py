@@ -1,7 +1,6 @@
 from flax import struct
 from typing import Any
-import attrs
-from attrs import define, field
+from dataclasses import dataclass, field
 
 from .wake_combination import SOSFS
 from .wake_vel import GaussVelocityDeficit, CumulativeGaussCurlVelocityDeficit
@@ -34,15 +33,16 @@ class WakeModelManager:
     turbulence_model: Any
     combination_model: Any
 
-    model_strings: dict = field(converter = dict)
-    enable_secondary_steering: bool = field(converter=bool, default=False)
-    enable_yaw_added_recovery: bool = field(converter=bool, default=False)
-    enable_active_wake_mixing: bool = field(converter=bool, default=False)
-    enable_transverse_velocities: bool = field(converter=bool, default=False)
+    model_strings: dict = struct.field(default_factory=dict)
+    wake_deflection_parameters: dict = struct.field(default_factory=dict)
+    wake_turbulence_parameters: dict = struct.field(default_factory=dict)
+    wake_velocity_parameters: dict = struct.field(default_factory=dict)
 
-    wake_deflection_parameters: dict = field(converter=dict)
-    wake_turbulence_parameters: dict = field(converter=dict)
-    wake_velocity_parameters: dict = field(converter=dict)
+    enable_secondary_steering: bool = False
+    enable_yaw_added_recovery: bool = False
+    enable_active_wake_mixing: bool = False
+    enable_transverse_velocities: bool = False
+
 
     # Not sure these really matter
     @property

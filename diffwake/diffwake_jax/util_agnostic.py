@@ -134,8 +134,8 @@ class Thrust:
     ti: jnp.ndarray
     rho: float
 
-    thrust_fn: Callable= struct.field(pytree_node=False)
-    tilt_interp: Callable= struct.field(pytree_node=False)
+    thrust_fn: Callable = struct.field(pytree_node=False)
+    tilt_interp: Callable = struct.field(pytree_node=False)
     correct_cp_ct_for_tilt: bool
     power_thrust_table: dict = struct.field(pytree_node=False)
 
@@ -160,8 +160,8 @@ class AxialInduction:
     rho: float
     pset: jnp.ndarray
 
-    axial_induction_function: Callable= struct.field(pytree_node=False)
-    tilt_interp: Callable= struct.field(pytree_node=False)
+    axial_induction_function: Callable = struct.field(pytree_node=False)
+    tilt_interp: Callable = struct.field(pytree_node=False)
     correct_cp_ct_for_tilt: bool
 
     power_thrust_table: dict = struct.field(pytree_node=False)
@@ -252,7 +252,7 @@ def make_constants(state: State):
 
 
 def make_params(state: State) -> Params:
-    B, T, _, = state.grid.x_sorted.shape
+    B, T, _, _ = state.grid.x_sorted.shape
 
     params = Params(
         B = B,

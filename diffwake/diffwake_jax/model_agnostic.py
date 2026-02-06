@@ -99,7 +99,8 @@ def create_wake(farm_dict):
                             enable_secondary_steering = wake_dict['enable_secondary_steering'],
                             enable_yaw_added_recovery = wake_dict['enable_yaw_added_recovery'],
                             enable_active_wake_mixing = wake_dict['enable_active_wake_mixing'],
-                            enable_transverse_velocities = wake_dict['enable_transverse_velocities'])
+                            enable_transverse_velocities = wake_dict['enable_transverse_velocities'],
+                            model_strings=wake_dict['model_strings'])
 
 
     # wake1 = WakeModelManager(velocity_model = CumulativeGaussCurlVelocityDeficit(**farm_dict['wake']['wake_velocity_parameters']['cc']),
