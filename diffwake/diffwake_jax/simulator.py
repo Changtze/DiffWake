@@ -85,7 +85,7 @@ def _simulate( T:int,
             enable_yaw_added_recovery: bool,):
     # Need to check what wake model is in use, then choose the type of solver
     for i in range(T):
-        state, _ =cc_solver_step(state, i, params,thrust_function,
+        state, _ = cc_solver_step(state, i, params,thrust_function,
                                     axial_induction_func,velocity_model, 
                                     deflection_model, turbulence_model,yaw_angles, tilt_angles, 
                                     **const,

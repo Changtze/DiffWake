@@ -18,7 +18,7 @@ def average_velocity_jax(v, method="cubic-mean"):
 
 
 def sequential_solve_step(
-        state: DynamicState,
+        state: DynamicState,  # TO-DO: not sure if this should be state or dynamic state
         ii: int,
         params: Params,
         thrust_function: Callable,
