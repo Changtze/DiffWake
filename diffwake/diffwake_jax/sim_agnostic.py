@@ -6,21 +6,26 @@ from jax         import lax, jit
 
 import jax.numpy as jnp
 
-from .util import (
-    init_dynamic_state, CCParams, CCState, CCResult, get_axial_induction_fn, get_thrust_fn, make_params, to_result,make_constants
+from .util_agnostic import (
+    init_dynamic_state, Params, DynamicState,
+    Result, State,
+    get_axial_induction_fn, get_thrust_fn,
+    make_params, to_result,make_constants
+
 )
 from .solver import cc_solver_step           
-from .util import CCState         # dataclass holding farm/flow/grid/wake
 
 
-def simulate(state: CCState) -> CCResult:
+def simulate(state: State) -> Result:
     """Forward run with *fixed* yaw angles (no grad wrt yaw)."""
     axial_fn  = get_axial_induction_fn(state.flow, state.farm, state.grid)
     thrust_fn = get_thrust_fn(state.flow, state.farm)
+
     (params,
     enable_secondary_steering,
     enable_transverse_velocities,
     enable_yaw_added_recovery) = make_params(state)
+
     const,yaw_angles, tilt_angles   = make_constants(state)
     init    = init_dynamic_state(state.grid, state.flow)
     T_int  = int(params.T)
@@ -42,7 +47,7 @@ def simulate(state: CCState) -> CCResult:
     return to_result(result_state)
 
 
-def simulate_simp(state: CCState) -> CCResult:
+def simulate_simp(state: State) -> Result:
     """Forward run with *fixed* yaw angles (no grad wrt yaw)."""
     axial_fn  = get_axial_induction_fn(state.flow, state.farm, state.grid)
     thrust_fn = get_thrust_fn(state.flow, state.farm)
@@ -69,8 +74,9 @@ def simulate_simp(state: CCState) -> CCResult:
                              enable_yaw_added_recovery=bool(enable_yaw_added_recovery))
     return to_result(result_state)
 
-def _simulate( T:int,
-            params: CCParams,
+
+def _simulate(T: int,
+            params: Params,
             thrust_function: Callable,
             axial_induction_func:Callable,
             velocity_model:  Callable,
@@ -79,15 +85,21 @@ def _simulate( T:int,
             yaw_angles:jnp.array,
             tilt_angles:jnp.array,
             const: dict,
-            state: CCState,
+            state: State,
             enable_secondary_steering: bool,
             enable_transverse_velocities: bool,
             enable_yaw_added_recovery: bool,):
-    # Need to check what wake model is in use, then choose the type of solver
+
+    # What conditions are necessary for a specific solver to be used?
+    if state.wake.model_strings['velocity_model'] == 'gauss':
+        pass
+
+
+
     for i in range(T):
-        state, _ =cc_solver_step(state, i, params,thrust_function,
+        state, _ = cc_solver_step(state, i, params,thrust_function,
                                     axial_induction_func,velocity_model, 
-                                    deflection_model, turbulence_model,yaw_angles, tilt_angles, 
+                                    deflection_model, turbulence_model,yaw_angles, tilt_angles,
                                     **const,
                                     enable_secondary_steering=enable_secondary_steering,
                                     enable_transverse_velocities=enable_transverse_velocities,
@@ -100,8 +112,9 @@ def _simulate( T:int,
                                "enable_secondary_steering",
                                 "enable_transverse_velocities",
                                 "enable_yaw_added_recovery"],donate_argnames=("init_state",))
+
 def _simulate_scan(  T:int,
-            params: CCParams,
+            params: Params,
             thrust_fn: Callable,
             axial_fn:Callable,
             velocity_model:  Callable,
@@ -110,7 +123,7 @@ def _simulate_scan(  T:int,
             yaw_angles_sorted:jnp.array,
             tilt_angles_sorted:jnp.array,
             const: dict,
-            init_state: CCState,
+            init_state: State,
             enable_secondary_steering: bool,
             enable_transverse_velocities: bool,
             enable_yaw_added_recovery: bool,):

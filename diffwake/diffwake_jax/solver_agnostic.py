@@ -1,7 +1,8 @@
 from typing import Tuple, Callable
 
+from .util_agnostic import Params, DynamicState
 from .util import CCParams, CCDynamicState
-from .util import GCHParams, GCHDynamicState
+
 from.util import smooth_step
 from .wake_deflection.gauss import calculate_transverse_velocity, wake_added_yaw, yaw_added_turbulence_mixing
 import jax.numpy as jnp
@@ -19,7 +20,7 @@ def average_velocity_jax(v, method="cubic-mean"):
 def sequential_solve_step(
         state: DynamicState,
         ii: int,
-        params: GCHParams,
+        params: Params,
         thrust_function: Callable,
         axial_induction_func: Callable,
         velocity_model: Callable,
@@ -35,7 +36,7 @@ def sequential_solve_step(
         x_c, y_c, z_c,
         u_init, dudz_init,
         ambient_ti
-        ) -> Tuple[GCHDynamicState, None]:
+        ) -> Tuple[DynamicState, None]:
     """
     JAX-based sequential solver compatible with the Gauss-Curl Hybrid model
     1. Extract local velocity components at turbine i
@@ -225,7 +226,7 @@ def sequential_solve_step(
     v_sorted = v_sorted + v_wake
     w_sorted = w_sorted + w_wake
     
-    next_state = GCHDynamicState(
+    next_state = DynamicState(
         turb_u_wake=wake_field,
         turb_inflow=turb_inflow,
         ti=ti,
@@ -255,6 +256,7 @@ def cc_solver_step(
     u_init, dudz_init,
     ambient_ti
 ) -> Tuple[CCDynamicState, None]:
+
     """One turbine-index update; identical math to PyTorch version."""
 
     # ─── unpack state tensors ───────────────────────────────────────────
