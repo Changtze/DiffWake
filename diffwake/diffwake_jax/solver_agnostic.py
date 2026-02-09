@@ -177,7 +177,7 @@ def sequential_solve_step(
         x=x_coord,
         y=y_coord,
         z=z_coord,
-        u_inital=u_init,
+        u_initial=u_init,
         wind_veer=params.wind_veer
     )
 
@@ -187,7 +187,7 @@ def sequential_solve_step(
         turb_u_wake,
         velocity_deficit * u_init,
     )
-    # The current flow field is u_init - wake_field
+    # Update the flow field
     u_sorted = u_init - wake_field
 
     # Calculate turbulence intensity

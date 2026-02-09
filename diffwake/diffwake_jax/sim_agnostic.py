@@ -106,20 +106,22 @@ def _simulate(T: int,
                                       enable_yaw_added_recovery=enable_yaw_added_recovery)
 
     elif velocity_model_name == 'gauss':
-        state, _ = sequential_solve_step(state=state, ii=T,
-                                         params=params,
-                                         thrust_function=thrust_function,
-                                         axial_induction_func=axial_induction_func,
-                                         velocity_model=velocity_model,
-                                         deflection_model=deflection_model,
-                                         turbulence_model=turbulence_model,
-                                         combination_model=combination_model,
-                                         yaw_angles=yaw_angles,
-                                         tilt_angles=tilt_angles,
-                                         **const,
-                                         enable_secondary_steering=enable_secondary_steering,
-                                         enable_yaw_added_recovery=enable_yaw_added_recovery,
-                                         enable_transverse_velocities=enable_transverse_velocities)
+        # Do I need to loop here?
+        for i in range(T):
+            state, _ = sequential_solve_step(state=state, ii=i,
+                                             params=params,
+                                             thrust_function=thrust_function,
+                                             axial_induction_func=axial_induction_func,
+                                             velocity_model=velocity_model,
+                                             deflection_model=deflection_model,
+                                             turbulence_model=turbulence_model,
+                                             combination_model=combination_model,
+                                             yaw_angles=yaw_angles,
+                                             tilt_angles=tilt_angles,
+                                             **const,
+                                             enable_secondary_steering=enable_secondary_steering,
+                                             enable_yaw_added_recovery=enable_yaw_added_recovery,
+                                             enable_transverse_velocities=enable_transverse_velocities)
 
     elif velocity_model_name == "turbopark":
         state, _ = turbopark_solver()

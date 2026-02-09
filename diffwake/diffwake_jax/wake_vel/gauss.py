@@ -107,63 +107,61 @@ class GaussVelocityDeficit:
         far_wake_mask = (x >= x0)
 
         # NEAR WAKE region
-        if jnp.sum(near_wake_mask):
-            near_wake_ramp_up = (x - xR) / (x0 - xR)
-            near_wake_ramp_down = (x0 - x) / (x0 - xR)
+        near_wake_ramp_up = (x - xR) / jnp.where(jnp.abs(x0 - xR) > 1e-6, x0 - xR, 1e-6)
+        near_wake_ramp_down = (x0 - x) / jnp.where(jnp.abs(x0 - xR) > 1e-6, x0 - xR, 1e-6)
 
-            sigma_y_near = near_wake_ramp_down * 0.501 * rotor_diameter_i * jnp.sqrt(ct_i / 2.0)
-            sigma_y_near += near_wake_ramp_up * sigma_y0
-            sigma_y_near = jnp.where(x >= xR, sigma_y_near, 0.5 * rotor_diameter_i)
+        sigma_y_near = near_wake_ramp_down * 0.501 * rotor_diameter_i * jnp.sqrt(ct_i / 2.0)
+        sigma_y_near += near_wake_ramp_up * sigma_y0
+        sigma_y_near = jnp.where(x >= xR, sigma_y_near, 0.5 * rotor_diameter_i)
 
-            sigma_z_near = near_wake_ramp_down * 0.501 * rotor_diameter_i * jnp.sqrt(ct_i / 2.0)
-            sigma_z_near += near_wake_ramp_up * sigma_z0
-            sigma_z_near = jnp.where(x >= xR, sigma_z_near, 0.5 * rotor_diameter_i)
+        sigma_z_near = near_wake_ramp_down * 0.501 * rotor_diameter_i * jnp.sqrt(ct_i / 2.0)
+        sigma_z_near += near_wake_ramp_up * sigma_z0
+        sigma_z_near = jnp.where(x >= xR, sigma_z_near, 0.5 * rotor_diameter_i)
 
-            r_near, C_near = rC(
-                wind_veer,
-                sigma_y_near,
-                sigma_z_near,
-                y,
-                y_i,
-                deflection_field_i,
-                z,
-                hub_height_i,
-                ct_i,
-                yaw_angle,
-                rotor_diameter_i,
-            )
+        r_near, C_near = rC(
+            wind_veer,
+            sigma_y_near,
+            sigma_z_near,
+            y,
+            y_i,
+            deflection_field_i,
+            z,
+            hub_height_i,
+            ct_i,
+            yaw_angle,
+            rotor_diameter_i,
+        )
 
-            near_wake_deficit = gaussian_function(C_near, r_near, 1, jnp.sqrt(0.5))
-            near_wake_deficit *= near_wake_mask
+        near_wake_deficit = gaussian_function(C_near, r_near, 1, jnp.sqrt(0.5))
+        near_wake_deficit *= near_wake_mask
 
-            velocity_deficit += near_wake_deficit
+        velocity_deficit += near_wake_deficit
 
         # FAR WAKE region
         # Wake expansion in the lateral (y) and the vertical (z)
-        if jnp.sum(far_wake_mask):
-            ky = self.ka * turbulence_intensity_i + self.kb  # wake expansion parameters
-            kz = self.ka * turbulence_intensity_i + self.kb  # wake expansion parameters
-            sigma_y_far = (ky * (x - x0) + sigma_y0) * far_wake_mask + sigma_y0 * (x < x0)
-            sigma_z_far = (kz * (x - x0) + sigma_z0) * far_wake_mask + sigma_z0 * (x < x0)
+        ky = self.ka * turbulence_intensity_i + self.kb  # wake expansion parameters
+        kz = self.ka * turbulence_intensity_i + self.kb  # wake expansion parameters
+        sigma_y_far = (ky * (x - x0) + sigma_y0) * far_wake_mask + sigma_y0 * (x < x0)
+        sigma_z_far = (kz * (x - x0) + sigma_z0) * far_wake_mask + sigma_z0 * (x < x0)
 
-            r_far, C_far = rC(
-                wind_veer,
-                sigma_y_far,
-                sigma_z_far,
-                y,
-                y_i,
-                deflection_field_i,
-                z,
-                hub_height_i,
-                ct_i,
-                yaw_angle,
-                rotor_diameter_i,
-            )
+        r_far, C_far = rC(
+            wind_veer,
+            sigma_y_far,
+            sigma_z_far,
+            y,
+            y_i,
+            deflection_field_i,
+            z,
+            hub_height_i,
+            ct_i,
+            yaw_angle,
+            rotor_diameter_i,
+        )
 
-            far_wake_deficit = gaussian_function(C_far, r_far, 1, jnp.sqrt(0.5))
-            far_wake_deficit *= far_wake_mask
+        far_wake_deficit = gaussian_function(C_far, r_far, 1, jnp.sqrt(0.5))
+        far_wake_deficit *= far_wake_mask
 
-            velocity_deficit += far_wake_mask
+        velocity_deficit += far_wake_deficit
 
         return velocity_deficit
 
