@@ -10,7 +10,7 @@ from .wake import WakeModelManager
 from typing import Callable, Any, Optional,NamedTuple,Dict
 from .turbine.turbine import thrust_coefficient, axial_induction
 from jax import lax, config
-from jax.tree_util import tree_map
+from jax.tree_util import tree_map, register_pytree_node
 from .interp1d import interp1d
 
 
@@ -129,6 +129,7 @@ class DynamicState:
     ct_acc: Optional[jnp.ndarray] = None
 
 
+
 @struct.dataclass
 class Thrust:
     ti: jnp.ndarray
@@ -194,6 +195,7 @@ def init_dynamic_state(grid, flow) -> DynamicState:
     B, T, Ny, Nz = grid.x_sorted.shape
     zeros = jnp.zeros_like(_to_jax(grid.x_sorted))
     ti = jnp.broadcast_to(flow.turbulence_intensities[:, None, None, None], (B, T, 3, 3))
+
     return DynamicState(
         turb_u_wake = zeros.copy(),
         turb_inflow = _to_jax(flow.u_initial_sorted).copy(),

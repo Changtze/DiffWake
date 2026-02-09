@@ -33,7 +33,8 @@ def simulate(state: State) -> Result:
                              axial_fn,
                              state.wake.velocity_model,
                              state.wake.deflection_model,
-                             state.wake.turbulence_model, 
+                             state.wake.turbulence_model,
+                             state.wake.combination_model,
                              yaw_angles,
                              tilt_angles,
                              const, 
@@ -133,6 +134,7 @@ def _simulate(T: int,
     
 
 @partial(jit, static_argnames=["T", "velocity_model", "turbulence_model",
+
                                "enable_secondary_steering",
                                 "enable_transverse_velocities",
                                 "enable_yaw_added_recovery"],donate_argnames=("init_state",))
@@ -143,7 +145,8 @@ def _simulate_scan(  T:int,
             axial_fn:Callable,
             velocity_model:  Callable,
             deflection_model: Callable,
-            turbulence_model: Callable, 
+            turbulence_model: Callable,
+            combination_model: Callable,
             yaw_angles_sorted:jnp.array,
             tilt_angles_sorted:jnp.array,
             const: dict,
@@ -153,6 +156,7 @@ def _simulate_scan(  T:int,
             enable_yaw_added_recovery: bool,):
 
     wake_vel_model = init_state.wake.model_strings['velocity_model']
+
     if wake_vel_model == "cc":
         def body(ii, st):
             ii32 = lax.convert_element_type(ii, jnp.int32)
@@ -177,15 +181,23 @@ def _simulate_scan(  T:int,
             return None
     else:
         def body(ii, st):
-            # is ii even needed for sequential solving
             ii32 = lax.convert_element_type(ii, jnp.int32)
             st_next, _ = sequential_solve_step(
-                state, ii, params,
-                thrust_fn, axial_fn,
+                state=st, ii=ii32, params=params,
+                thrust_function=thrust_fn,
+                axial_induction_func=axial_fn,
+                velocity_model=velocity_model,
+                deflection_model=deflection_model,
+                turbulence_model=turbulence_model,
+                combination_model=combination_model,
+                yaw_angles=yaw_angles_sorted,
+                tilt_angles=tilt_angles_sorted,
+                **const,
+                enable_secondary_steering=enable_secondary_steering,
+                enable_yaw_added_recovery=enable_yaw_added_recovery,
+                enable_transverse_velocities=enable_transverse_velocities
             )
-
             return st_next
-
 
 
     final_state = lax.fori_loop(0, T, body, init_state)

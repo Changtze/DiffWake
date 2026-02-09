@@ -55,7 +55,7 @@ def load_input( farm_path: Path, generator_path: Path) -> Config:
     layout_dict = farm_dict['farm']
     for key, value in layout_dict.items():
         if isinstance(value, list) and isinstance(value[0], float):
-            layout_dict[key] = jnp.array(value)    
+            layout_dict[key] = jnp.array(value)
     return Config(generator_dict, farm_dict, flow_field_dict, layout_dict)
 
 
