@@ -1,4 +1,4 @@
-from jax         import lax, jit, tree, device_put, jit
+from jax import lax, tree, device_put, jit
 import jax.numpy as jnp
 import jax
 from .util import (
@@ -9,8 +9,10 @@ from .util import (
 from .solver import cc_solver_step
 from dataclasses import replace as dc_replace
 
+
 def runtime_dtype():
     return jnp.float64 if jax.config.x64_enabled else jnp.float32
+
 
 def make_constants(state: CCState):
     g   = _to_jax(state.grid)
