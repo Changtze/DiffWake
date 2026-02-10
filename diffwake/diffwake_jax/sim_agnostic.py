@@ -142,8 +142,8 @@ def _simulate(T: int,
 #                                 "enable_yaw_added_recovery"],donate_argnames=("init_state",))
 
 @partial(jit, static_argnames=["T", "velocity_model_name",
-                               # "turbulence_model",
-                               # "velocity_model",  # this is causing the issue
+                               "turbulence_model",
+                               "velocity_model",  # this is causing the issue
                                "combination_model",
                                "enable_secondary_steering",
                                "enable_transverse_velocities",
@@ -158,8 +158,8 @@ def _simulate_scan(T: int,
             deflection_model: Callable,
             turbulence_model: Callable,
             combination_model: Callable,
-            yaw_angles_sorted:jnp.array,
-            tilt_angles_sorted:jnp.array,
+            yaw_angles_sorted: jnp.array,
+            tilt_angles_sorted: jnp.array,
             const: dict,
             init_state: DynamicState,
             enable_secondary_steering: bool,
