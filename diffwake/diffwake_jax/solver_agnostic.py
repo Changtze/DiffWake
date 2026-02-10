@@ -1,9 +1,7 @@
 from typing import Tuple, Callable
 
-from .util_agnostic import Params, DynamicState
-from .util import CCParams, CCDynamicState
+from .util_agnostic import Params, DynamicState, smooth_step
 
-from.util import smooth_step
 from .wake_deflection.gauss import calculate_transverse_velocity, wake_added_yaw, yaw_added_turbulence_mixing
 import jax.numpy as jnp
 from jax import lax
@@ -18,7 +16,7 @@ def average_velocity_jax(v, method="cubic-mean"):
 
 
 def sequential_solve_step(
-        state: DynamicState,  # TO-DO: not sure if this should be state or dynamic state
+        state: DynamicState,
         ii: int,
         params: Params,
         thrust_function: Callable,
@@ -165,7 +163,7 @@ def sequential_solve_step(
         ti_i = updated
 
     # Calculate the velocity deficit and combine it with the wake field
-    velocity_deficit = velocity_model(
+    velocity_deficit, _ = velocity_model(
         x_i, y_i, z_i,
         axial_i,
         def_field,
@@ -183,12 +181,13 @@ def sequential_solve_step(
 
     # Accumulate the wake field
     # In GCH/sequential solver, we combine the NEW deficit into the EXISTING wake field
-    wake_field = combination_model(
+    wake_field, _ = combination_model(
         turb_u_wake,
         velocity_deficit * u_init,
     )
+
     # Update the flow field
-    u_sorted = u_init - wake_field
+    u_sorted = u_init - wake_field  # Index 0 since combination_model returns a tupl
 
     # Calculate turbulence intensity
     wake_added_ti = turbulence_model(
@@ -238,9 +237,9 @@ def sequential_solve_step(
 
 
 def cc_solver_step(
-    state: CCDynamicState,
+    state: DynamicState,
     ii: int,
-    params: CCParams,
+    params: Params,
     thrust_function: Callable,
     axial_induction_func: Callable,
     velocity_model: Callable, 
@@ -255,7 +254,7 @@ def cc_solver_step(
     x_c, y_c, z_c,
     u_init, dudz_init,
     ambient_ti
-) -> Tuple[CCDynamicState, None]:
+) -> Tuple[DynamicState, None]:
 
     """One turbine-index update; identical math to PyTorch version."""
 
@@ -407,7 +406,7 @@ def cc_solver_step(
     # ------------------------------------------------ addera sidvind-fält
     v_sorted = v_sorted + v_wake
     w_sorted = w_sorted + w_wake
-    next_state = CCDynamicState(
+    next_state = DynamicState(
         turb_u_wake=turb_u_wake,
         turb_inflow=turb_inflow,
         ti=ti,

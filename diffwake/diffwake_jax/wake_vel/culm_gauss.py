@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 from flax import struct                    # Lightweight immutable dataclass
 from jax import lax
+from typing import Tuple
 
 
 def safe_sqrt(x: jnp.ndarray, eps: float = 1e-9) -> jnp.ndarray:

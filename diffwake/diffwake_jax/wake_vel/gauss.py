@@ -1,7 +1,6 @@
-import jax
 import jax.numpy as jnp
-from flax import struct                 # Lightweight immutable dataclass
-from jax import lax
+from flax import struct
+from typing import Tuple
 
 
 def cosd(angle):
@@ -30,7 +29,7 @@ def rC(wind_veer, sigma_y, sigma_z, y, y_i, delta, z, HH, Ct, yaw, D):
 
 
 def safe_sqrt(x: jnp.ndarray, eps: float = 1e-9) -> jnp.ndarray:
-    """Numerically-safe sqrt (same logic as PyTorch clamp-then-sqrt)."""
+    """Numerically safe sqrt (same logic as PyTorch clamp-then-sqrt)."""
     return jnp.sqrt(jnp.clip(x, min=eps))
 
 
@@ -67,7 +66,7 @@ class GaussVelocityDeficit:
         z: jnp.ndarray,
         u_initial: jnp.ndarray,
         wind_veer: float,
-    ) -> jnp.ndarray:
+    ) -> Tuple[jnp.ndarray, None]:
 
         # Opposite sign convention in this model
         yaw_angle = -1 * yaw_angle_i
@@ -163,6 +162,6 @@ class GaussVelocityDeficit:
 
         velocity_deficit += far_wake_deficit
 
-        return velocity_deficit
+        return velocity_deficit, None
 
 

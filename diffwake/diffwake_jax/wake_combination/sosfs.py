@@ -1,9 +1,11 @@
 import jax.numpy as jnp
 from typing import Any, Dict
 from flax import struct
+from typing import Tuple
 
 
-@struct.dataclass
+# i dont think this should be a dataclass?
+#@struct.dataclass
 class SOSFS:
     def prepare_function(self) -> Dict[str, Any]:
         """
@@ -12,7 +14,7 @@ class SOSFS:
         return {}
 
     def __call__(self, wake_field: jnp.ndarray,
-                 velocity_field: jnp.ndarray) -> jnp.ndarray:
+                 velocity_field: jnp.ndarray) -> Tuple[jnp.ndarray, None]:
         """
         Combines the base flow field with the velocity deficits using sum of squares.
 
@@ -25,4 +27,4 @@ class SOSFS:
             jnp.sqrt(x1 ** 2 + x2 ** 2)
         """
 
-        return jnp.hypot(wake_field, velocity_field)
+        return jnp.hypot(wake_field, velocity_field), None

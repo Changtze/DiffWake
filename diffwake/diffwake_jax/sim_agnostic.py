@@ -1,16 +1,15 @@
 # --- imports ---------------------------------------------------------------
 from functools   import partial
-from jax         import lax, jit
 from typing import Callable
 from jax         import lax, jit
-
 import jax.numpy as jnp
 
-from .util_agnostic import (init_dynamic_state, Params, DynamicState,Result, State,get_axial_induction_fn, get_thrust_fn, make_params, to_result,make_constants
+
+from .util_agnostic import (init_dynamic_state, Params, DynamicState, Result, State, get_axial_induction_fn, get_thrust_fn, make_params, to_result, make_constants
 
 )
-from .solver import cc_solver_step
-from .solver_agnostic import sequential_solve_step, turbopark_solver, empirical_gauss_solver
+from .solver_agnostic import cc_solver_step, sequential_solve_step, turbopark_solver, empirical_gauss_solver
+
 
 
 def simulate(state: State) -> Result:
@@ -23,15 +22,17 @@ def simulate(state: State) -> Result:
     enable_transverse_velocities,
     enable_yaw_added_recovery) = make_params(state)
 
-    const,yaw_angles, tilt_angles   = make_constants(state)
+    const, yaw_angles, tilt_angles   = make_constants(state)
     init    = init_dynamic_state(state.grid, state.flow)
     T_int  = int(params.T)
+
 
     result_state = _simulate_scan(T_int,
                              params, 
                              thrust_fn,
                              axial_fn,
                              state.wake.velocity_model,
+                             state.wake.model_strings['velocity_model'],
                              state.wake.deflection_model,
                              state.wake.turbulence_model,
                              state.wake.combination_model,
@@ -132,32 +133,40 @@ def _simulate(T: int,
 
     return state
     
+# TO-DO: combination_model returns a JAX array therefore it cannot be passed as a static argument
+# @partial(jit, static_argnames=["T", "velocity_model", "velocity_model_name",
+#                                "turbulence_model",
+#                                "combination_model",
+#                                "enable_secondary_steering",
+#                                 "enable_transverse_velocities",
+#                                 "enable_yaw_added_recovery"],donate_argnames=("init_state",))
 
-@partial(jit, static_argnames=["T", "velocity_model", "turbulence_model",
-
+@partial(jit, static_argnames=["T", "velocity_model_name",
+                               # "turbulence_model",
+                               # "velocity_model",  # this is causing the issue
+                               "combination_model",
                                "enable_secondary_steering",
-                                "enable_transverse_velocities",
-                                "enable_yaw_added_recovery"],donate_argnames=("init_state",))
-
-def _simulate_scan(  T:int,
+                               "enable_transverse_velocities",
+                               "enable_yaw_added_recovery"],
+             donate_argnames=("init_state",))
+def _simulate_scan(T: int,
             params: Params,
             thrust_fn: Callable,
             axial_fn:Callable,
             velocity_model:  Callable,
+            velocity_model_name: str,
             deflection_model: Callable,
             turbulence_model: Callable,
             combination_model: Callable,
             yaw_angles_sorted:jnp.array,
             tilt_angles_sorted:jnp.array,
             const: dict,
-            init_state: State,
+            init_state: DynamicState,
             enable_secondary_steering: bool,
             enable_transverse_velocities: bool,
             enable_yaw_added_recovery: bool,):
 
-    wake_vel_model = init_state.wake.model_strings['velocity_model']
-
-    if wake_vel_model == "cc":
+    if velocity_model_name == "cc":
         def body(ii, st):
             ii32 = lax.convert_element_type(ii, jnp.int32)
             st_next, _ = cc_solver_step(
@@ -171,11 +180,11 @@ def _simulate_scan(  T:int,
                 enable_yaw_added_recovery=enable_yaw_added_recovery,
             )
             return st_next
-    elif wake_vel_model  == "turbopark":
+    elif velocity_model_name  == "turbopark":
         def body(ii, st):
             # TO BE WRITTEN
             return None
-    elif wake_vel_model == "empirical_gauss":
+    elif velocity_model_name == "empirical_gauss":
         def body(ii, st):
             # TO BE WRITTEN
             return None
@@ -183,15 +192,11 @@ def _simulate_scan(  T:int,
         def body(ii, st):
             ii32 = lax.convert_element_type(ii, jnp.int32)
             st_next, _ = sequential_solve_step(
-                state=st, ii=ii32, params=params,
-                thrust_function=thrust_fn,
-                axial_induction_func=axial_fn,
-                velocity_model=velocity_model,
-                deflection_model=deflection_model,
-                turbulence_model=turbulence_model,
-                combination_model=combination_model,
-                yaw_angles=yaw_angles_sorted,
-                tilt_angles=tilt_angles_sorted,
+                st, ii32, params,
+                thrust_fn, axial_fn,
+                velocity_model, deflection_model,
+                turbulence_model, combination_model,
+                yaw_angles_sorted, tilt_angles_sorted,
                 **const,
                 enable_secondary_steering=enable_secondary_steering,
                 enable_yaw_added_recovery=enable_yaw_added_recovery,
