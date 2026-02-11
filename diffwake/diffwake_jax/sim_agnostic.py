@@ -23,7 +23,7 @@ def simulate(state: State) -> Result:
     enable_yaw_added_recovery) = make_params(state)
 
     const, yaw_angles, tilt_angles   = make_constants(state)
-    init    = init_dynamic_state(state.grid, state.flow)
+    init    = init_dynamic_state(state.grid, state.flow, state.wake.model_strings['velocity_model'])
     T_int  = int(params.T)
 
 
@@ -57,7 +57,7 @@ def simulate_simp(state: State) -> Result:
     enable_yaw_added_recovery) = make_params(state)
 
     const,yaw_angles, tilt_angles   = make_constants(state)
-    init    = init_dynamic_state(state.grid, state.flow)
+    init    = init_dynamic_state(state.grid, state.flow, state.wake.model_strings['velocity_model'])
     T_int  = int(params.T)
 
     result_state = _simulate(T_int,

@@ -35,20 +35,28 @@ def make_constants(state: State):
 
 #
 
-def init_dynamic_state(grid, flow, batch_size = None) -> State:
+def init_dynamic_state(grid, flow, velocity_model_string: str, batch_size = None) -> State:
     B, T, Ny, Nz = grid.x_sorted.shape
     if batch_size is None:
         batch_size = B
     zeros = jnp.zeros_like(_to_jax(grid.x_sorted[:batch_size]))
     ti = jnp.broadcast_to(flow.turbulence_intensities[:, None, None, None], (B, T, 3, 3))[:batch_size]
+
+    Ctmp = None
+    ct_acc = None
+
+    if velocity_model_string == "cc":
+        Ctmp        = jnp.zeros((T, batch_size, T, Ny, Nz), zeros.dtype),
+        ct_acc=jnp.zeros((batch_size, T, 1, 1), zeros.dtype),  # <— running CTs
+
     return DynamicState(
         turb_u_wake = zeros.copy(),
         turb_inflow = _to_jax(flow.u_initial_sorted[:batch_size]).copy(),
         ti          = ti.copy(),
         v_sorted      = zeros.copy(),
         w_sorted      = zeros.copy(),
-        Ctmp        = jnp.zeros((T, batch_size, T, Ny, Nz), zeros.dtype),
-        ct_acc=jnp.zeros((batch_size, T, 1, 1), zeros.dtype),  # <— running CTs
+        Ctmp = Ctmp,
+        ct_acc = ct_acc
     )
 
 
@@ -63,7 +71,7 @@ def make_par_runner(state: State):
      enable_yaw_added_recovery) = make_params(state)
 
     const, yaw_angles, tilt_angles = make_constants(state)
-    init = init_dynamic_state(state.grid, state.flow)
+    init = init_dynamic_state(state.grid, state.flow, state.wake.model_strings['velocity_model'])
 
     # Put once on device & stop grads through constants
     const       = tree.map(lambda x: lax.stop_gradient(device_put(x)), const)
@@ -136,7 +144,7 @@ def make_sub_par_runner(state: State, batch_size = 512):
 
     const, yaw_angles, tilt_angles = make_constants(state)
 
-    init = init_dynamic_state(state.grid, state.flow, batch_size=batch_size)
+    init = init_dynamic_state(state.grid, state.flow, state.wake.model_strings['velocity_model'], batch_size=batch_size)
     x_coord = const["x_coord"]; y_coord = const["y_coord"]; z_coord = const["z_coord"]
     x_c     = const["x_c"];     y_c     = const["y_c"];     z_c     = const["z_c"]
     u_init  = const["u_init"];  dudz_init = const["dudz_init"]

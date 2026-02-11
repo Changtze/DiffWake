@@ -147,11 +147,13 @@ def make_tilt_interp(wind_speeds: jnp.ndarray, tilt: jnp.ndarray):
 
 @struct.dataclass
 class Turbine:
+
     turbine_type: str
     operation_model: str
     rotor_diameter: float
     hub_height: float
     TSR: float
+
     power_thrust_table: Dict[str, jnp.ndarray]
     correct_cp_ct_for_tilt: bool = False
     floating_tilt_table: Optional[Dict[str, jnp.ndarray]] = None

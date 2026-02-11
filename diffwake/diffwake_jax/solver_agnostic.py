@@ -79,7 +79,7 @@ def sequential_solve_step(
     turb_avg = average_velocity_jax(u_i)
     # vel_avg__i should be (B, 1, 1, 1)
     vel_avg__i = turb_avg
-    
+
     yaw_i = lax.dynamic_index_in_dim(yaw_angles, ii, axis=1, keepdims=True)
     tilt_i = lax.dynamic_index_in_dim(tilt_angles, ii, axis=1, keepdims=True)
 
@@ -230,7 +230,9 @@ def sequential_solve_step(
         turb_inflow=turb_inflow,
         ti=ti,
         v_sorted=v_sorted,
-        w_sorted=w_sorted
+        w_sorted=w_sorted,
+        Ctmp=None,
+        ct_acc=None
     )
 
     return next_state, None

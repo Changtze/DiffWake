@@ -20,7 +20,8 @@ class Farm:
     thrust_coefficient_function: Callable = struct.field(pytree_node=False)
     axial_induction_function: Callable = struct.field(pytree_node=False)
     tilt_interp: Optional[Callable] = struct.field(pytree_node=False)
-    power_thrust_table: Dict = struct.field(pytree_node=False)
+
+    power_thrust_table: Dict = struct.field(pytree_node=True)
 
     yaw_angles: Optional[jnp.ndarray] = None      
     tilt_angles: Optional[jnp.ndarray] = None    

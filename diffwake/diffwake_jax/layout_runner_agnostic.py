@@ -94,7 +94,7 @@ def make_layout_runner(state: State, grid_resolution: int = 3):
      
      yaw_angles, tilt_angles) = _make_constants_local(state)
 
-    init = init_dynamic_state(state.grid, state.flow)
+    init = init_dynamic_state(state.grid, state.flow, state.wake.model_strings['velocity_model'])
 
     theta = (state.flow.wind_directions - 3. * math.pi / 2.)[:, None]  # (B,1)
 

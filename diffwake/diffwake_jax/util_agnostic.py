@@ -114,7 +114,6 @@ class State:
     flow: FlowField
     wake: WakeModelManager
 
-
 @struct.dataclass
 class DynamicState:
     # Need a factory method to make this wake-model specific?
@@ -138,7 +137,7 @@ class Thrust:
     thrust_fn: Callable = struct.field(pytree_node=False)
     tilt_interp: Callable = struct.field(pytree_node=False)
     correct_cp_ct_for_tilt: bool
-    power_thrust_table: dict = struct.field(pytree_node=False)
+    power_thrust_table: dict = struct.field(pytree_node=True)
 
     def __call__(self, velocities: jnp.ndarray,
                  yaw_angles: jnp.ndarray,
@@ -165,7 +164,7 @@ class AxialInduction:
     tilt_interp: Callable = struct.field(pytree_node=False)
     correct_cp_ct_for_tilt: bool
 
-    power_thrust_table: dict = struct.field(pytree_node=False)
+    power_thrust_table: dict = struct.field(pytree_node=True)
     cubature_weights: Optional[jnp.ndarray]
     multidim_condition: Optional[Any] = None  # can be jnp.ndarray or None
 
@@ -188,7 +187,7 @@ class AxialInduction:
         )
 
 
-def init_dynamic_state(grid, flow) -> DynamicState:
+def init_dynamic_state(grid, flow, velocity_model_name: str) -> DynamicState:
     """
     RETURN GENERAL DYNAMIC STATE PARAMETERS DEPENDING ON WAKE MODEL
     """
@@ -196,14 +195,21 @@ def init_dynamic_state(grid, flow) -> DynamicState:
     zeros = jnp.zeros_like(_to_jax(grid.x_sorted))
     ti = jnp.broadcast_to(flow.turbulence_intensities[:, None, None, None], (B, T, 3, 3))
 
+    Ctmp        = None
+    ct_acc = None
+
+    if velocity_model_name == "cc":
+        Ctmp  = jnp.zeros((T, B, T, Ny, Nz), zeros.dtype)
+        ct_acc=jnp.zeros((B, T, 1, 1), zeros.dtype) # <— running CTs
+
     return DynamicState(
         turb_u_wake = zeros.copy(),
         turb_inflow = _to_jax(flow.u_initial_sorted).copy(),
         ti = ti.copy(),
         v_sorted = zeros.copy(),
         w_sorted = zeros.copy(),
-        Ctmp        = jnp.zeros((T, B, T, Ny, Nz), zeros.dtype),
-        ct_acc=jnp.zeros((B, T, 1, 1), zeros.dtype),  # <— running CTs
+        Ctmp=Ctmp,
+        ct_acc=ct_acc
     )
 
 
@@ -356,4 +362,3 @@ def set_cfg(cfg: Config,
         flow_field=flow_field,
         layout=layout
     )
-    pass
