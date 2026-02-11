@@ -68,7 +68,7 @@ def _make_constants_local(state: State):
 def make_layout_runner(state: State, grid_resolution: int = 3):
     """
     Build a compiled function that runs one full simulation given a shared farm layout:
-        runner(layout_2d) -> CCResult
+        runner(layout_2d) -> Result
     where x_t, y_t are shape (T,), shared for all wind directions in the batch.
 
     Notes:

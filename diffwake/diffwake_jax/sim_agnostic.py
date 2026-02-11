@@ -142,8 +142,8 @@ def _simulate(T: int,
 #                                 "enable_yaw_added_recovery"],donate_argnames=("init_state",))
 
 @partial(jit, static_argnames=["T", "velocity_model_name",
-                               "turbulence_model",
-                               "velocity_model",  # this is causing the issue
+                               # "turbulence_model",
+                               # "velocity_model",  # this is causing the issue
                                "combination_model",
                                "enable_secondary_steering",
                                "enable_transverse_velocities",
