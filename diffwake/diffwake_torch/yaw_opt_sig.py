@@ -5,6 +5,9 @@ import math
 from .LBFGS import LBFGS
 
 
+"""
+Smooth sigmoid reparameterisation to help with LBFGS convergence on constrained yaw angle optimisation
+"""
 
 def power_loss_function(yaw_angles, model):
     model.set(

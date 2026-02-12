@@ -1,4 +1,5 @@
 import jax.numpy as jnp
+
 import math
 from flax import struct
 

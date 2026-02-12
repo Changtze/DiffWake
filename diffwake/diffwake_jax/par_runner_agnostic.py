@@ -60,7 +60,6 @@ def init_dynamic_state(grid, flow, velocity_model_string: str, batch_size = None
     )
 
 
-
 def make_par_runner(state: State):
     axial_fn  = get_axial_induction_fn(state.flow, state.farm, state.grid)
     thrust_fn = get_thrust_fn(state.flow, state.farm)
@@ -75,7 +74,6 @@ def make_par_runner(state: State):
 
     # Put once on device & stop grads through constants
     const       = tree.map(lambda x: lax.stop_gradient(device_put(x)), const)
-
     tilt_angles = lax.stop_gradient(device_put(tilt_angles))
     yaw_angles = lax.stop_gradient(device_put(yaw_angles))
 
@@ -90,6 +88,7 @@ def make_par_runner(state: State):
     velocity_model   = state.wake.velocity_model
     deflection_model = state.wake.deflection_model
     turbulence_model = state.wake.turbulence_model
+    combination_model = state.wake.combination_model
 
     T = int(params.T)
     B = int(params.B)

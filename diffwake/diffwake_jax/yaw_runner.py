@@ -1,4 +1,4 @@
-from jax         import lax, jit, tree, device_put, jit
+from jax         import lax, tree, device_put, jit
 import jax.numpy as jnp
 from .util import (
     CCState,

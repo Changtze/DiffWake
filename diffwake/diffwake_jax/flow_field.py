@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 from flax import struct
 from typing import Optional, Any
-import jax
+
 
 @struct.dataclass
 class FlowField:

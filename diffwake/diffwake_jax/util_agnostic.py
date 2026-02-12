@@ -114,6 +114,7 @@ class State:
     flow: FlowField
     wake: WakeModelManager
 
+
 @struct.dataclass
 class DynamicState:
     # Need a factory method to make this wake-model specific?
@@ -126,7 +127,6 @@ class DynamicState:
     # Model-specific buffers
     Ctmp: Optional[jnp.ndarray] = None
     ct_acc: Optional[jnp.ndarray] = None
-
 
 
 @struct.dataclass

@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 
+
 def interp1d(x, y, xnew):
     indices = jnp.searchsorted(x, xnew, side="right")
     indices = jnp.clip(indices, 1, x.shape[0] - 1)
