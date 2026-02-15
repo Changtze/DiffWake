@@ -5,6 +5,14 @@ from .util_agnostic import Params, DynamicState, smooth_step
 from .wake_deflection.gauss import calculate_transverse_velocity, wake_added_yaw, yaw_added_turbulence_mixing
 import jax.numpy as jnp
 from jax import lax
+import jax
+
+# jax.config.update("jax_enable_x64", True)
+#
+# def set_dtype():
+#     return jnp.float64 if jax.config.x64_enabled else jnp.float32
+#
+# DTYPE = set_dtype()
 
 def average_velocity_jax(v, method="cubic-mean"):
     if method == "simple-mean":
