@@ -1,7 +1,6 @@
 name: CC
 description: Horns Rev 1 using Cumulative Gauss Curl model
 floris_version: v3.0.0
-
 logging:
   console:
     enable: true

@@ -4,6 +4,7 @@ from typing import Tuple, Optional
 from pathlib import Path
 import sys
 from dataclasses import dataclass, replace
+from jax.tree_util import tree_map
 sys.path.append(os.path.abspath('..'))
 import time
 
@@ -100,8 +101,10 @@ class DiffWakeSimulation:
         if scan:
             # Use lax
             self.result = simulate(self.state)
+            tree_map(lambda x: x.block_until_ready(), self.result)
         else:
             self.result = simulate_simp(self.state)
+            tree_map(lambda x: x.block_until_ready(), self.result)
         time_end = time.time()
 
 
@@ -110,7 +113,7 @@ class DiffWakeSimulation:
     def get_turbine_powers(self) -> jnp.ndarray:
         # Simulation must be run first
         if self.state is None or self.result is None:
-            self.state, self.result = self.run()
+            self.state, self.result, _ = self.run()
 
         return power_fn(
             power_thrust_table=self.state.farm.power_thrust_table,

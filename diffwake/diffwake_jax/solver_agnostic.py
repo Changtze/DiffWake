@@ -13,14 +13,14 @@ import jax
 #     return jnp.float64 if jax.config.x64_enabled else jnp.float32
 #
 # DTYPE = set_dtype()
-DTYPE = jnp.float16
+
 
 
 def average_velocity_jax(v, method="cubic-mean"):
     if method == "simple-mean":
-        return jnp.mean(v, axis=(-2, -1), keepdims=True, dtype=DTYPE)
+        return jnp.mean(v, axis=(-2, -1), keepdims=True, dtype=v.dtype)
     if method == "cubic-mean":
-        m3 = jnp.mean(v**3, axis=(-2, -1), keepdims=True, dtype=DTYPE)
+        m3 = jnp.mean(v**3, axis=(-2, -1), keepdims=True, dtype=v.dtype)
         return jnp.cbrt(m3)                 # exact libm cbrt, matches Torch
     raise ValueError
 
@@ -142,8 +142,8 @@ def sequential_solve_step(
     )
 
     # Calculate transverse velocities
-    v_wake = jnp.zeros_like(v_sorted, dtype=DTYPE)
-    w_wake = jnp.zeros_like(w_sorted, dtype=DTYPE)
+    v_wake = jnp.zeros_like(v_sorted)
+    w_wake = jnp.zeros_like(w_sorted)
     if enable_transverse_velocities:
         v_wake, w_wake = calculate_transverse_velocity(
             u_i, u_init, dudz_init,
@@ -167,7 +167,8 @@ def sequential_solve_step(
             w_wake_i
         )
         gch_gain = 2.0
-        updated = ti_i + gch_gain * I_mixing
+        updated = (ti_i + gch_gain * I_mixing).astype(ti.dtype)
+
         ti = lax.dynamic_update_slice_in_dim(ti, updated, ii, axis=1)
         # Update ti_i for use in velocity_model
         ti_i = updated
@@ -211,17 +212,17 @@ def sequential_solve_step(
         params.gr_square
     )
 
-    #dtype = x_coord.dtype
+    dtype = x_coord.dtype
     downstream_len = 15.0 * params.rotor_diameter
-    eps = jnp.asarray(1e-10, dtype=DTYPE)
+    eps = jnp.asarray(1e-10, dtype)
 
     downstream_start = x_coord > (x_i + eps)
     downstream_end = x_coord <= (x_i + downstream_len - eps)
-    down_mask = (downstream_start & downstream_end).astype(DTYPE)
+    down_mask = (downstream_start & downstream_end).astype(dtype)
 
     # Lateral wake mask
     dy = jnp.abs(y_coord - y_i)
-    lat_mask = (dy < 2.0 * params.rotor_diameter - eps).astype(DTYPE)
+    lat_mask = (dy < 2.0 * params.rotor_diameter - eps).astype(dtype)
 
     wake_ti = jnp.nan_to_num(wake_added_ti, nan=0.0, posinf=0.0, neginf=0.0)
 
@@ -367,7 +368,7 @@ def cc_solver_step(
             v_wake_i, 
             w_wake_i
             )
-        updated = I_mixing + ti_i
+        updated = (I_mixing + ti_i).astype(ti.dtype)
         #ti = lax.dynamic_update_slice(ti, updated, (0, ii, 0, 0))
         ti = lax.dynamic_update_slice_in_dim(ti, updated, ii, axis=1)
         
