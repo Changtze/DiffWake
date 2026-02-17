@@ -27,6 +27,7 @@ class DiffWakeConfig:
     generator_file: str
     farm_path: Path = None
     generator_path: Path = None
+    dtype: Optional = jnp.float32
 
     def __post_init__(self):
         if self.farm_path is None:
@@ -47,9 +48,11 @@ class DiffWakeParams:
 class DiffWakeSimulation:
     def __init__(self,
                  config: DiffWakeConfig,
-                 params: DiffWakeParams):
+                 params: DiffWakeParams,
+                 ):
         self.config = config
         self.params = params
+        self.dtype = config.dtype
 
         self.state = None
         self.result = None
@@ -94,9 +97,12 @@ class DiffWakeSimulation:
 
     def run(self, scan: bool = False) -> Tuple[State, Result, float]:
         self.state = create_state(self.sim)
-        # print("State structure")
-        # print(jax.tree_util.tree_structure(self.state))
-        # tree_map(check_types, self.state)
+
+        # cast state into dtype
+        self.state = tree_map(
+            lambda x: x.astype(self.dtype) if hasattr(x, "dtype") and jnp.issubdtype(x.dtype, jnp.floating) else x, self.state
+        )
+
         time_start = time.time()
         if scan:
             # Use lax
@@ -106,6 +112,8 @@ class DiffWakeSimulation:
             self.result = simulate_simp(self.state)
             tree_map(lambda x: x.block_until_ready(), self.result)
         time_end = time.time()
+
+
 
 
         return self.state, self.result, time_end - time_start

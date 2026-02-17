@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 from flax import struct
 from typing import Optional, Any
@@ -54,11 +55,13 @@ class FlowField:
             safe_z ** (self.wind_shear - 1)
         )
 
-        wind_speeds_exp = self.wind_speeds[:, None, None, None]  # (B,1,1,1)
+        wind_speeds_exp = self.wind_speeds[:, None, None, None].astype(self.wind_speeds.dtype)  # (B,1,1,1)
 
         u_init = wind_speeds_exp * wind_profile_plane
+        u_init = u_init.astype(self.wind_speeds.dtype)
         dudz   = wind_speeds_exp * dudz_profile
-        zeros  = jnp.zeros_like(u_init)
+        dudz   = dudz.astype(self.wind_speeds.dtype)
+        zeros  = jnp.zeros_like(u_init, dtype=self.wind_speeds.dtype)
 
         idxer  = grid.unsorted_indices
         u_uns  = jnp.take_along_axis(u_init, idxer, axis=1)

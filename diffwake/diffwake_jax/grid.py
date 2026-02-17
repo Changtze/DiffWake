@@ -58,38 +58,39 @@ class TurbineGrid:
 
         theta = (wind_directions - 270.0 * math.pi / 180.0)[:, None]  # (B,1)
 
-        x_rot = x_rel[None, :] * jnp.cos(theta) - y_rel[None, :] * jnp.sin(theta) + xc
-        y_rot = x_rel[None, :] * jnp.sin(theta) + y_rel[None, :] * jnp.cos(theta) + yc
-        z_rot = jnp.broadcast_to(z_rel[None, :], (B, T))
+        DTYPE = turbine_coordinates.dtype
+        x_rot = (x_rel[None, :] * jnp.cos(theta) - y_rel[None, :] * jnp.sin(theta) + xc).astype(DTYPE)
+        y_rot = (x_rel[None, :] * jnp.sin(theta) + y_rel[None, :] * jnp.cos(theta) + yc).astype(DTYPE)
+        z_rot = jnp.broadcast_to(z_rel[None, :], (B, T)).astype(DTYPE)
 
         radius = turbine_diameter * 0.5 * 0.5 
-        span = jnp.linspace(-1.0, 1.0, grid_resolution)  
+        span = jnp.linspace(-1.0, 1.0, grid_resolution, dtype=DTYPE)  
 
         dy = span * radius 
         dz = span * radius 
-        dy_exp = jnp.broadcast_to(dy[None, None, :, None], (B, T, grid_resolution, grid_resolution))
-        dz_exp = jnp.broadcast_to(dz[None, None, None, :], (B, T, grid_resolution, grid_resolution))
+        dy_exp = jnp.broadcast_to(dy[None, None, :, None], (B, T, grid_resolution, grid_resolution)).astype(DTYPE)
+        dz_exp = jnp.broadcast_to(dz[None, None, None, :], (B, T, grid_resolution, grid_resolution)).astype(DTYPE)
 
-        y_grid = y_rot[:, :, None, None] + dy_exp
-        z_grid = z_rot[:, :, None, None] + dz_exp
+        y_grid = (y_rot[:, :, None, None] + dy_exp).astype(DTYPE)
+        z_grid = (z_rot[:, :, None, None] + dz_exp).astype(DTYPE)
 
-        template = jnp.ones((B, T, grid_resolution, grid_resolution))
-        x_grid = x_rot[:, :, None, None] * template
+        template = jnp.ones((B, T, grid_resolution, grid_resolution), dtype=DTYPE)
+        x_grid = (x_rot[:, :, None, None] * template).astype(DTYPE)
 
         sorted_idx = jnp.argsort(x_grid, axis=1)
         sorted_coord = jnp.argsort(x_rot, axis=1)
         unsorted_idx = jnp.argsort(sorted_idx, axis=1)
 
-        x_sorted = jnp.take_along_axis(x_grid, sorted_idx, axis=1)
-        y_sorted = jnp.take_along_axis(y_grid, sorted_idx, axis=1)
-        z_sorted = jnp.take_along_axis(z_grid, sorted_idx, axis=1)
+        x_sorted = jnp.take_along_axis(x_grid, sorted_idx, axis=1).astype(DTYPE)
+        y_sorted = jnp.take_along_axis(y_grid, sorted_idx, axis=1).astype(DTYPE)
+        z_sorted = jnp.take_along_axis(z_grid, sorted_idx, axis=1).astype(DTYPE)
 
         th = (wind_directions - 270.0*jnp.pi / 180.0)[:, None, None, None]
         x_off = x_sorted - xc
         y_off = y_sorted - yc
-        x_i_frame = x_off * jnp.cos(th) + y_off * jnp.sin(th) + xc
-        y_i_frame = -x_off * jnp.sin(th) + y_off * jnp.cos(th) + yc
-        z_i_frame = z_sorted
+        x_i_frame = (x_off * jnp.cos(th) + y_off * jnp.sin(th) + xc).astype(DTYPE)
+        y_i_frame = (-x_off * jnp.sin(th) + y_off * jnp.cos(th) + yc).astype(DTYPE)
+        z_i_frame = z_sorted.astype(DTYPE)
 
         return TurbineGrid(
             turbine_coordinates=turbine_coordinates,

@@ -230,11 +230,11 @@ def sequential_solve_step(
 
     ti_added = ao * wake_ti * down_mask * lat_mask
 
-    ti = jnp.maximum(jnp.hypot(ti_added, ambient_ti), ti)
+    ti = jnp.maximum(jnp.hypot(ti_added, ambient_ti), ti).astype(ti.dtype)
 
     # Additional transverse velocity from wake
-    v_sorted = v_sorted + v_wake
-    w_sorted = w_sorted + w_wake
+    v_sorted = (v_sorted + v_wake).astype(v_sorted.dtype)
+    w_sorted = (w_sorted + w_wake).astype(w_sorted.dtype)
     
     next_state = DynamicState(
         turb_u_wake=wake_field,
@@ -414,11 +414,11 @@ def cc_solver_step(
 
     # identisk formel: sqrt( ti_added² + ambient² ), sedan max med befintlig
 
-    ti = jnp.maximum(jnp.sqrt(ti_added**2 + ambient_ti**2), ti)
+    ti = jnp.maximum(jnp.sqrt(ti_added**2 + ambient_ti**2), ti).astype(ti.dtype)
 
     # ------------------------------------------------ addera sidvind-fält
-    v_sorted = v_sorted + v_wake
-    w_sorted = w_sorted + w_wake
+    v_sorted = (v_sorted + v_wake).astype(v_sorted.dtype)
+    w_sorted = (w_sorted + w_wake).astype(w_sorted.dtype)
     next_state = DynamicState(
         turb_u_wake=turb_u_wake,
         turb_inflow=turb_inflow,

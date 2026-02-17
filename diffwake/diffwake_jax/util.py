@@ -11,6 +11,7 @@ from .turbine.turbine import thrust_coefficient, axial_induction
 from jax import lax, config
 from jax.tree_util import tree_map
 from .interp1d import interp1d
+from .util_agnostic import set_precision, get_dtype
 
 # ---------- helpers --------------------------------------------------------
 def _to_jax(pytree):

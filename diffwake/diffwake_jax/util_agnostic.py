@@ -14,6 +14,49 @@ from jax.tree_util import tree_map, register_pytree_node
 from .interp1d import interp1d
 
 
+# ---------- precision --------------------------------------------------------
+_CURRENT_DTYPE = jnp.float32
+
+def set_precision(precision: str):
+    """
+    Sets the JAX floating point precision.
+    
+    Args:
+        precision: One of 'fp16', 'fp32', 'fp64' (or 'half', 'single', 'double').
+                   Case-insensitive.
+    
+    Returns:
+        The JAX dtype corresponding to the selected precision.
+    """
+    global _CURRENT_DTYPE
+    precision = precision.lower()
+    
+    if precision in ("fp64", "double", "float64"):
+        config.update("jax_enable_x64", True)
+        _CURRENT_DTYPE = jnp.float64
+    elif precision in ("fp32", "single", "float32"):
+        config.update("jax_enable_x64", False)
+        _CURRENT_DTYPE = jnp.float32
+    elif precision in ("fp16", "half", "float16"):
+        config.update("jax_enable_x64", False)
+        _CURRENT_DTYPE = jnp.float16
+    elif precision in ("bf16", "brain", "bfloat16"):
+        config.update("jax_enable_x64", False)
+        _CURRENT_DTYPE = jnp.bfloat16
+    else:
+        raise ValueError(f"Unknown precision: {precision}")
+        
+    return _CURRENT_DTYPE
+
+def get_dtype():
+    """Returns the current floating point dtype used for simulations."""
+    if config.x64_enabled:
+        return jnp.float64
+    if _CURRENT_DTYPE == jnp.float16:
+        return jnp.float16
+    return jnp.float32
+
+
 # ---------- helpers --------------------------------------------------------
 def _to_jax(pytree):
     """Convert any lingering torch.Tensor to jnp.ndarray."""
@@ -192,19 +235,20 @@ def init_dynamic_state(grid, flow, velocity_model_name: str) -> DynamicState:
     RETURN GENERAL DYNAMIC STATE PARAMETERS DEPENDING ON WAKE MODEL
     """
     B, T, Ny, Nz = grid.x_sorted.shape
-    zeros = jnp.zeros_like(_to_jax(grid.x_sorted))
-    ti = jnp.broadcast_to(flow.turbulence_intensities[:, None, None, None], (B, T, 3, 3))
+    DTYPE = get_dtype()
+    zeros = jnp.zeros((B, T, Ny, Nz), dtype=DTYPE)
+    ti = jnp.broadcast_to(flow.turbulence_intensities[:, None, None, None].astype(DTYPE), (B, T, 3, 3))
 
     Ctmp        = None
     ct_acc = None
 
     if velocity_model_name == "cc":
-        Ctmp  = jnp.zeros((T, B, T, Ny, Nz), zeros.dtype)
-        ct_acc=jnp.zeros((B, T, 1, 1), zeros.dtype) # <— running CTs
+        Ctmp  = jnp.zeros((T, B, T, Ny, Nz), DTYPE)
+        ct_acc=jnp.zeros((B, T, 1, 1), DTYPE) # <— running CTs
 
     return DynamicState(
         turb_u_wake = zeros.copy(),
-        turb_inflow = _to_jax(flow.u_initial_sorted).copy(),
+        turb_inflow = _to_jax(flow.u_initial_sorted).astype(DTYPE).copy(),
         ti = ti.copy(),
         v_sorted = zeros.copy(),
         w_sorted = zeros.copy(),
@@ -249,14 +293,15 @@ def make_constants(state: State):
     y_c = jnp.mean(y, axis=(2,3), keepdims=True)
     z_c = jnp.mean(z, axis=(2,3), keepdims=True)
 
+    DTYPE = get_dtype()
     const = dict(
-        x_coord = x,  y_coord = y,  z_coord = z,
-        x_c = x_c,    y_c = y_c,    z_c = z_c,
-        u_init  = fld.u_initial_sorted.copy(),
-        dudz_init = fld.dudz_initial_sorted.copy(),
-        ambient_ti = fld.turbulence_intensities[:, None, None, None].copy(),
+        x_coord = x.astype(DTYPE),  y_coord = y.astype(DTYPE),  z_coord = z.astype(DTYPE),
+        x_c = x_c.astype(DTYPE),    y_c = y_c.astype(DTYPE),    z_c = z_c.astype(DTYPE),
+        u_init  = fld.u_initial_sorted.astype(DTYPE).copy(),
+        dudz_init = fld.dudz_initial_sorted.astype(DTYPE).copy(),
+        ambient_ti = fld.turbulence_intensities[:, None, None, None].astype(DTYPE).copy(),
     )
-    return const, _to_jax(farm.yaw_angles_sorted), _to_jax(farm.tilt_angles_sorted)
+    return const, _to_jax(farm.yaw_angles_sorted).astype(DTYPE), _to_jax(farm.tilt_angles_sorted).astype(DTYPE)
 
 
 def make_params(state: State) -> Params:

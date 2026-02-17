@@ -4,14 +4,15 @@ import jax
 from .util_agnostic import (
     State,
     get_axial_induction_fn,
-    get_thrust_fn, make_params,to_result,_to_jax, DynamicState
+    get_thrust_fn, make_params,to_result,_to_jax, DynamicState,
+    get_dtype
 )
 from .solver_agnostic import cc_solver_step
 from dataclasses import replace as dc_replace
 
 
-def runtime_dtype():
-    return jnp.float64 if jax.config.x64_enabled else jnp.float32
+# def runtime_dtype():
+#     return jnp.float64 if jax.config.x64_enabled else jnp.float32
 
 
 def make_constants(state: State):
@@ -24,14 +25,15 @@ def make_constants(state: State):
     y_c = jnp.mean(y, axis=(2,3), keepdims=True)
     z_c = jnp.mean(z, axis=(2,3), keepdims=True)
 
+    DTYPE = get_dtype()
     const = dict(
-        x_coord = x,  y_coord = y,  z_coord = z,
-        x_c = x_c,    y_c = y_c,    z_c = z_c,
-        u_init  = fld.u_initial_sorted.copy(),
-        dudz_init = fld.dudz_initial_sorted.copy(),
+        x_coord = x.astype(DTYPE),  y_coord = y.astype(DTYPE),  z_coord = z.astype(DTYPE),
+        x_c = x_c.astype(DTYPE),    y_c = y_c.astype(DTYPE),    z_c = z_c.astype(DTYPE),
+        u_init  = fld.u_initial_sorted.astype(DTYPE).copy(),
+        dudz_init = fld.dudz_initial_sorted.astype(DTYPE).copy(),
     )
 
-    return const, _to_jax(farm.yaw_angles_sorted), _to_jax(farm.tilt_angles_sorted)
+    return const, _to_jax(farm.yaw_angles_sorted).astype(DTYPE), _to_jax(farm.tilt_angles_sorted).astype(DTYPE)
 
 #
 
@@ -39,19 +41,20 @@ def init_dynamic_state(grid, flow, velocity_model_string: str, batch_size = None
     B, T, Ny, Nz = grid.x_sorted.shape
     if batch_size is None:
         batch_size = B
-    zeros = jnp.zeros_like(_to_jax(grid.x_sorted[:batch_size]))
-    ti = jnp.broadcast_to(flow.turbulence_intensities[:, None, None, None], (B, T, 3, 3))[:batch_size]
+    DTYPE = get_dtype()
+    zeros = jnp.zeros((batch_size, T, Ny, Nz), dtype=DTYPE)
+    ti = jnp.broadcast_to(flow.turbulence_intensities[:, None, None, None], (B, T, 3, 3)).astype(DTYPE)[:batch_size]
 
     Ctmp = None
     ct_acc = None
 
     if velocity_model_string == "cc":
-        Ctmp        = jnp.zeros((T, batch_size, T, Ny, Nz), zeros.dtype),
-        ct_acc=jnp.zeros((batch_size, T, 1, 1), zeros.dtype),  # <— running CTs
+        Ctmp        = jnp.zeros((T, batch_size, T, Ny, Nz), DTYPE),
+        ct_acc=jnp.zeros((batch_size, T, 1, 1), DTYPE),  # <— running CTs
 
     return DynamicState(
         turb_u_wake = zeros.copy(),
-        turb_inflow = _to_jax(flow.u_initial_sorted[:batch_size]).copy(),
+        turb_inflow = _to_jax(flow.u_initial_sorted[:batch_size]).astype(DTYPE).copy(),
         ti          = ti.copy(),
         v_sorted      = zeros.copy(),
         w_sorted      = zeros.copy(),
@@ -98,7 +101,7 @@ def make_par_runner(state: State):
         ambient_ti : (B,T,1,1)
         a_s, b_s   : (B,1,1,1)
         """
-        DTYPE = runtime_dtype()
+        DTYPE = get_dtype()
 
         # Ensure dtype and exact (B,) shapes
         ti_vec  = jnp.asarray(ti_vec,  DTYPE).reshape((B,))
@@ -167,7 +170,7 @@ def make_sub_par_runner(state: State, batch_size = 512):
 
     T = int(params.T)
     B = int(params.B)
-    DTYPE = runtime_dtype()
+    DTYPE = get_dtype()
     
     @jit
     def run_subset(ti_vec: jnp.ndarray, idx: jnp.ndarray):
