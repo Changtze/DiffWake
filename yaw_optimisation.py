@@ -85,7 +85,7 @@ def _latin_hypercube_unit(key, M: int, D: int, dtype) -> jax.Array:
         return jax.random.permutation(k, base)
 
     perms = jax.vmap(_perm_one)(k_perms)
-    U = (perms.astype(dtype) + jitter) / dtype.type(M)
+    U = (perms.astype(dtype) + jitter) / dtype(M)
     return U.T
 
 
@@ -134,7 +134,7 @@ def parse_args() -> argparse.Namespace:
     # Optimisation configuration
     p.add_argument("--penalty-weight", type=float, default=1e-3, help="Weight of yaw penalty term in objective.")
     p.add_argument("--restarts", type=int, default=1)
-    p.add_argument("--maxiter", type=int, default=200, help="Maximum number of optimiser iterations.")
+    p.add_argument("--max-iter", type=int, default=200, help="Maximum number of optimiser iterations.")
     p.add_argument("--patience", type=int, default=10, help="Early stop if loss change is less than min_delta for this many steps")
     p.add_argument("--seed", type=int, default=0, help="Random seed.")
     p.add_argument("--min-delta", type=float, default=1e-7, help="Minimum change in loss to continue optimisation.")
@@ -320,18 +320,17 @@ def main():
     def step(omega, opt_state):
         value, grad = val_and_grad(omega)
         updates, opt_state = opt.update(
-            grad, opt_state, omega, grad=grad, value_fn=lambda _gamma: loss_from_yaw(_gamma)
+            grad, opt_state, omega, value=value, grad=grad, value_fn=lambda _omega: loss_from_omega(_omega, gamma_min, gamma_max)
         )
-        gamma = optax.apply_updates(omega, updates)
+        omega = optax.apply_updates(omega, updates)
 
         # Diagnostics
         gammas = gamma_from_omega_sig(omega, gamma_max)
-        yaw_phys = jnp.rad2deg(gammas)
         yaw_vio = yaw_penalty_sq(gammas, gamma_min, gamma_max)
         phys = value - pw * yaw_vio # loss function value
         g2 = sum([jnp.vdot(g, g) for g in jax.tree_util.tree_leaves(grad)])
         gnorm = jnp.sqrt(g2)
-        return gamma, opt_state, value, gnorm, phys, yaw_vio
+        return omega, opt_state, value, gnorm, phys, yaw_vio
 
     # Restarts
     key = jax.random.PRNGKey(args.seed)
@@ -369,7 +368,7 @@ def main():
 
         # Warmup to start @jax.jit on first call
         t0 = time.time()
-        gamma, opt_state, v, g, phys, yaw_vio = step(omega, opt_state)
+        omega, opt_state, v, g, phys, yaw_vio = step(omega, opt_state)
         jax.block_until_ready(v)
         print(f"warmup compile+run: {time.time()-t0:.3f}s  "
               f"loss0={float(v):.6e}, phys0={float(phys):.6e}, yaw_vio0={float(yaw_vio):.6e}, |g|0={float(g):.3e}")
@@ -413,26 +412,26 @@ def main():
             print(f"L-BFGS time (restart {m}): {time.time()-t0:.3f}s  iters={last_it}")
 
             # Final evaluation
-            gamma = gamma_from_omega_sig(omega, gamma_max)
-            final_loss = loss_from_yaw(gamma)
+            gamma_final = gamma_from_omega_sig(omega, gamma_max)
+            final_loss = loss_from_yaw(gamma_final)
             jax.block_until_ready(final_loss)
             final_power = -float(final_loss)
             print(f"[restart {m}] final mean power (MW): {final_power:.6f}")
 
             if final_power > best_power:
                 best_power = final_power
-                best_yaw = gamma
+                best_yaw = gamma_final
                 best_idx = m
                 best_omega = omega
                 best_yaw_vio = float(
-                    yaw_penalty_sq(gamma, gamma_min, gamma_max)
+                    yaw_penalty_sq(gamma_final, gamma_min, gamma_max)
                 )
                 best_loss = float(final_loss)
 
         print(f"\n === Finished {args.restarts} restarts in {time.time() - total_t0:.3f}s ===")
         print(f"Best restart: {best_idx}, best mean power (MW): {best_power:.6f}")
-        print("Best yaw angles: ")
-        print(np.asarray(best_yaw))
+        print("Best yaw angles (degrees): ")
+        print(np.rad2deg(np.asarray(best_yaw)))
 
         # Per-case mean power (MW) for best yaw angles
         out = runner(best_yaw)

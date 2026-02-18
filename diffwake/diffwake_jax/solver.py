@@ -145,8 +145,6 @@ def sequential_solve_step(
     v_wake = jnp.zeros_like(v_sorted)
     w_wake = jnp.zeros_like(w_sorted)
 
-    print("v_wake after zeros: ", v_wake.shape)
-    print("w_wake after zeros: ", w_wake.shape)
 
     if enable_transverse_velocities:
         v_wake, w_wake = calculate_transverse_velocity(
@@ -156,8 +154,7 @@ def sequential_solve_step(
             yaw_i_expanded, turb_Cts_i, params.TSR, axial_i,
             params.wind_shear, scale=2.0
         )
-    print("v_wake after transverse velocities: ", v_wake.shape)
-    print("w_wake after transverse velocities: ", w_wake.shape)
+
 
     # Calculate yaw added recovery and update the TI field
     if enable_yaw_added_recovery:
@@ -174,16 +171,7 @@ def sequential_solve_step(
         )
         gch_gain = 2.0
         updated = (ti_i + gch_gain * I_mixing).astype(ti.dtype)
-        print(f"u_i shape: {u_i.shape}")
-        print(f"v_i shape: {v_i.shape}")
-        print(f"ti_i shape: {ti_i.shape}")
-        print(f"w_i shape: {w_i.shape}")
-        print(f"v_wake_i shape: {v_wake_i.shape}")
-        print(f"w_wake_i shape: {w_wake_i.shape}")
-        print(f"I_mixing shape: {I_mixing.shape}")  # this is the cause of the issue
-        print(f"ti_i shape: {ti_i.shape}")
-        print(f"Updated shape: {updated.shape}")  # the shape of this is wrong
-        print(f"TI shape: {ti.shape}")
+
         ti = lax.dynamic_update_slice_in_dim(ti, updated, ii, axis=1)
         # Update ti_i for use in velocity_model
         ti_i = updated
