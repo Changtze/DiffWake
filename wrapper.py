@@ -12,10 +12,10 @@ import jax.numpy as jnp
 jnp.set_printoptions(precision=3, suppress=True)
 
 # Wake model-agnostic edits to DiffWake
-from diffwake.diffwake_jax.model_agnostic import load_input, create_state
-from diffwake.diffwake_jax.util_agnostic import average_velocity_jax, State, Result, set_cfg
+from diffwake.diffwake_jax.model import load_input, create_state
+from diffwake.diffwake_jax.util import average_velocity_jax, State, Result, set_cfg
 from diffwake.diffwake_jax.turbine.operation_models import power as power_fn
-from diffwake.diffwake_jax.sim_agnostic import simulate_simp, simulate
+from diffwake.diffwake_jax.simulator import simulate_simp, simulate
 
 
 """Wrapper file to run simple DiffWake simulations"""

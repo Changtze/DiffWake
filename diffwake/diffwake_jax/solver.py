@@ -1,25 +1,34 @@
 from typing import Tuple, Callable
 
-from .util import CCParams, CCDynamicState
-from .util import GCHParams, GCHDynamicState
-from.util import smooth_step
+from .util import Params, DynamicState, smooth_step
+
 from .wake_deflection.gauss import calculate_transverse_velocity, wake_added_yaw, yaw_added_turbulence_mixing
 import jax.numpy as jnp
 from jax import lax
+import jax
+
+# jax.config.update("jax_enable_x64", True)
+#
+# def set_dtype():
+#     return jnp.float64 if jax.config.x64_enabled else jnp.float32
+#
+# DTYPE = set_dtype()
+
+
 
 def average_velocity_jax(v, method="cubic-mean"):
     if method == "simple-mean":
-        return jnp.mean(v, axis=(-2, -1), keepdims=True)
+        return jnp.mean(v, axis=(-2, -1), keepdims=True, dtype=v.dtype)
     if method == "cubic-mean":
-        m3 = jnp.mean(v**3, axis=(-2, -1), keepdims=True)
+        m3 = jnp.mean(v**3, axis=(-2, -1), keepdims=True, dtype=v.dtype)
         return jnp.cbrt(m3)                 # exact libm cbrt, matches Torch
     raise ValueError
 
 
 def sequential_solve_step(
-        state: GCHDynamicState,
+        state: DynamicState,
         ii: int,
-        params: GCHParams,
+        params: Params,
         thrust_function: Callable,
         axial_induction_func: Callable,
         velocity_model: Callable,
@@ -35,7 +44,7 @@ def sequential_solve_step(
         x_c, y_c, z_c,
         u_init, dudz_init,
         ambient_ti
-        ) -> Tuple[GCHDynamicState, None]:
+        ) -> Tuple[DynamicState, None]:
     """
     JAX-based sequential solver compatible with the Gauss-Curl Hybrid model
     1. Extract local velocity components at turbine i
@@ -80,7 +89,7 @@ def sequential_solve_step(
     turb_avg = average_velocity_jax(u_i)
     # vel_avg__i should be (B, 1, 1, 1)
     vel_avg__i = turb_avg
-    
+
     yaw_i = lax.dynamic_index_in_dim(yaw_angles, ii, axis=1, keepdims=True)
     tilt_i = lax.dynamic_index_in_dim(tilt_angles, ii, axis=1, keepdims=True)
 
@@ -135,6 +144,10 @@ def sequential_solve_step(
     # Calculate transverse velocities
     v_wake = jnp.zeros_like(v_sorted)
     w_wake = jnp.zeros_like(w_sorted)
+
+    print("v_wake after zeros: ", v_wake.shape)
+    print("w_wake after zeros: ", w_wake.shape)
+
     if enable_transverse_velocities:
         v_wake, w_wake = calculate_transverse_velocity(
             u_i, u_init, dudz_init,
@@ -143,6 +156,8 @@ def sequential_solve_step(
             yaw_i_expanded, turb_Cts_i, params.TSR, axial_i,
             params.wind_shear, scale=2.0
         )
+    print("v_wake after transverse velocities: ", v_wake.shape)
+    print("w_wake after transverse velocities: ", w_wake.shape)
 
     # Calculate yaw added recovery and update the TI field
     if enable_yaw_added_recovery:
@@ -158,13 +173,23 @@ def sequential_solve_step(
             w_wake_i
         )
         gch_gain = 2.0
-        updated = ti_i + gch_gain * I_mixing
+        updated = (ti_i + gch_gain * I_mixing).astype(ti.dtype)
+        print(f"u_i shape: {u_i.shape}")
+        print(f"v_i shape: {v_i.shape}")
+        print(f"ti_i shape: {ti_i.shape}")
+        print(f"w_i shape: {w_i.shape}")
+        print(f"v_wake_i shape: {v_wake_i.shape}")
+        print(f"w_wake_i shape: {w_wake_i.shape}")
+        print(f"I_mixing shape: {I_mixing.shape}")  # this is the cause of the issue
+        print(f"ti_i shape: {ti_i.shape}")
+        print(f"Updated shape: {updated.shape}")  # the shape of this is wrong
+        print(f"TI shape: {ti.shape}")
         ti = lax.dynamic_update_slice_in_dim(ti, updated, ii, axis=1)
         # Update ti_i for use in velocity_model
         ti_i = updated
 
     # Calculate the velocity deficit and combine it with the wake field
-    velocity_deficit = velocity_model(
+    velocity_deficit, _ = velocity_model(
         x_i, y_i, z_i,
         axial_i,
         def_field,
@@ -176,18 +201,19 @@ def sequential_solve_step(
         x=x_coord,
         y=y_coord,
         z=z_coord,
-        u_inital=u_init,
+        u_initial=u_init,
         wind_veer=params.wind_veer
     )
 
     # Accumulate the wake field
     # In GCH/sequential solver, we combine the NEW deficit into the EXISTING wake field
-    wake_field = combination_model(
+    wake_field, _ = combination_model(
         turb_u_wake,
         velocity_deficit * u_init,
     )
-    # The current flow field is u_init - wake_field
-    u_sorted = u_init - wake_field
+
+    # Update the flow field
+    u_sorted = u_init - wake_field  # Index 0 since combination_model returns a tupl
 
     # Calculate turbulence intensity
     wake_added_ti = turbulence_model(
@@ -219,27 +245,29 @@ def sequential_solve_step(
 
     ti_added = ao * wake_ti * down_mask * lat_mask
 
-    ti = jnp.maximum(jnp.hypot(ti_added, ambient_ti), ti)
+    ti = jnp.maximum(jnp.hypot(ti_added, ambient_ti), ti).astype(ti.dtype)
 
     # Additional transverse velocity from wake
-    v_sorted = v_sorted + v_wake
-    w_sorted = w_sorted + w_wake
+    v_sorted = (v_sorted + v_wake).astype(v_sorted.dtype)
+    w_sorted = (w_sorted + w_wake).astype(w_sorted.dtype)
     
-    next_state = GCHDynamicState(
+    next_state = DynamicState(
         turb_u_wake=wake_field,
         turb_inflow=turb_inflow,
         ti=ti,
         v_sorted=v_sorted,
-        w_sorted=w_sorted
+        w_sorted=w_sorted,
+        Ctmp=None,
+        ct_acc=None
     )
 
     return next_state, None
 
 
 def cc_solver_step(
-    state: CCDynamicState,
+    state: DynamicState,
     ii: int,
-    params: CCParams,
+    params: Params,
     thrust_function: Callable,
     axial_induction_func: Callable,
     velocity_model: Callable, 
@@ -254,7 +282,8 @@ def cc_solver_step(
     x_c, y_c, z_c,
     u_init, dudz_init,
     ambient_ti
-) -> Tuple[CCDynamicState, None]:
+) -> Tuple[DynamicState, None]:
+
     """One turbine-index update; identical math to PyTorch version."""
 
     # ─── unpack state tensors ───────────────────────────────────────────
@@ -354,7 +383,7 @@ def cc_solver_step(
             v_wake_i, 
             w_wake_i
             )
-        updated = I_mixing + ti_i
+        updated = (I_mixing + ti_i).astype(ti.dtype)
         #ti = lax.dynamic_update_slice(ti, updated, (0, ii, 0, 0))
         ti = lax.dynamic_update_slice_in_dim(ti, updated, ii, axis=1)
         
@@ -400,12 +429,12 @@ def cc_solver_step(
 
     # identisk formel: sqrt( ti_added² + ambient² ), sedan max med befintlig
 
-    ti = jnp.maximum(jnp.sqrt(ti_added**2 + ambient_ti**2), ti)
+    ti = jnp.maximum(jnp.sqrt(ti_added**2 + ambient_ti**2), ti).astype(ti.dtype)
 
     # ------------------------------------------------ addera sidvind-fält
-    v_sorted = v_sorted + v_wake
-    w_sorted = w_sorted + w_wake
-    next_state = CCDynamicState(
+    v_sorted = (v_sorted + v_wake).astype(v_sorted.dtype)
+    w_sorted = (w_sorted + w_wake).astype(w_sorted.dtype)
+    next_state = DynamicState(
         turb_u_wake=turb_u_wake,
         turb_inflow=turb_inflow,
         ti=ti,
@@ -416,4 +445,13 @@ def cc_solver_step(
     )
     return next_state, None
 
+
+def turbopark_solver() -> Tuple[DynamicState, None]:
+    # Needs writing
+    pass
+
+
+def empirical_gauss_solver() -> Tuple[DynamicState, None]:
+    # Needs writing
+    pass
 

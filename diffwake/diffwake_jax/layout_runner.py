@@ -5,7 +5,7 @@ from jax import lax, jit, device_put
 from jax.tree_util import tree_map
 
 from .util import (
-    CCState,
+    State,
     init_dynamic_state, get_axial_induction_fn, get_thrust_fn,
     make_params, to_result, _to_jax
 )
@@ -53,7 +53,7 @@ def _rotate_and_sort_from_1d(
 
     return yaw_sorted, tilt_sorted, x_sorted, y_sorted, x_c_sorted, y_c_sorted
 
-def _make_constants_local(state: CCState):
+def _make_constants_local(state: State):
     g   = _to_jax(state.grid)
     fld = _to_jax(state.flow)
     farm = state.farm
@@ -65,10 +65,10 @@ def _make_constants_local(state: CCState):
     ambient_ti = jnp.asarray(fld.turbulence_intensities[:, None, None, None])
     return z_coord, z_c,  u_init, dudz_init, ambient_ti, _to_jax(farm.yaw_angles), _to_jax(farm.tilt_angles)
 
-def make_layout_runner(state: CCState, grid_resolution: int = 3):
+def make_layout_runner(state: State, grid_resolution: int = 3):
     """
     Build a compiled function that runs one full simulation given a shared farm layout:
-        runner(layout_2d) -> CCResult
+        runner(layout_2d) -> Result
     where x_t, y_t are shape (T,), shared for all wind directions in the batch.
 
     Notes:
@@ -94,7 +94,7 @@ def make_layout_runner(state: CCState, grid_resolution: int = 3):
      
      yaw_angles, tilt_angles) = _make_constants_local(state)
 
-    init = init_dynamic_state(state.grid, state.flow)
+    init = init_dynamic_state(state.grid, state.flow, state.wake.model_strings['velocity_model'])
 
     theta = (state.flow.wind_directions - 3. * math.pi / 2.)[:, None]  # (B,1)
 

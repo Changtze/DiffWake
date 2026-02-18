@@ -61,7 +61,7 @@ def parse_args() -> argparse.Namespace:
     # Data & configs
     p.add_argument("--data-dir", type=Path, default=Path("data/horn"),
                    help="Directory with weather data and YAML configs.")
-    p.add_argument("--farm-yaml", type=str, default="cc_hornsRev.yaml",
+    p.add_argument("--farm-yaml", type=str, default="cc_simple.yaml",
                    help="Farm configuration YAML (relative to --data-dir).")
     p.add_argument("--turbine-yaml", type=str, default="vestas_v802MW.yaml",
                    help="Turbine configuration YAML (relative to --data-dir).")
@@ -565,7 +565,6 @@ def main():
         weights=weights_np,
         config_meta=config_meta,
     )
-
 
 if __name__ == "__main__":
     main()

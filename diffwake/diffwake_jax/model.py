@@ -15,7 +15,7 @@ from .wake_deflection.gauss import GaussVelocityDeflection
 from .wake_turbulence.crespo import CrespoHernandez
 from .wake_vel.culm_gauss import CumulativeGaussCurlVelocityDeficit, CumulativeGaussCurlVelocityDeficitAsBs
 from .wake_vel.gauss import GaussVelocityDeficit
-from .util import CCState, CCConfig
+from .util import State, Config
 from .wake import WakeModelManager
 
 POWER_SETPOINT_DEFAULT = 1.e12
@@ -37,7 +37,7 @@ MODEL_MAP = {
 }
 
 
-def load_input( farm_path: Path, generator_path: Path):
+def load_input( farm_path: Path, generator_path: Path) -> Config:
     farm_dict = load_yaml(farm_path)
     generator_dict = load_yaml(generator_path)
     flow_field_dict = farm_dict["flow_field"]     
@@ -55,12 +55,14 @@ def load_input( farm_path: Path, generator_path: Path):
     layout_dict = farm_dict['farm']
     for key, value in layout_dict.items():
         if isinstance(value, list) and isinstance(value[0], float):
-            layout_dict[key] = jnp.array(value)    
-    return CCConfig(generator_dict, farm_dict, flow_field_dict, layout_dict)     
+            layout_dict[key] = jnp.array(value)
+
+    # Convert all to FrozenDict except
+    return Config(generator_dict, farm_dict, flow_field_dict, layout_dict)
+
 
 def create_wake(farm_dict):
-    # TO-DO: Update WakeModelManager such that it instantiates models based on the provided .yaml configuration
-    wake_dict = farm_dict['wake']  # dict
+    wake_dict = farm_dict['wake']
 
     # Get velocity model
     vel_model_string = wake_dict['model_strings']['velocity_model'].lower()
@@ -99,7 +101,8 @@ def create_wake(farm_dict):
                             enable_secondary_steering = wake_dict['enable_secondary_steering'],
                             enable_yaw_added_recovery = wake_dict['enable_yaw_added_recovery'],
                             enable_active_wake_mixing = wake_dict['enable_active_wake_mixing'],
-                            enable_transverse_velocities = wake_dict['enable_transverse_velocities'])
+                            enable_transverse_velocities = wake_dict['enable_transverse_velocities'],
+                            model_strings=wake_dict['model_strings'])
 
 
     # wake1 = WakeModelManager(velocity_model = CumulativeGaussCurlVelocityDeficit(**farm_dict['wake']['wake_velocity_parameters']['cc']),
@@ -114,19 +117,45 @@ def create_wake(farm_dict):
 
     return wake
 
-def create_wake_asbs(farm_dict):
-    cc = farm_dict.get('wake', {}).get('wake_velocity_parameters', {}).get('cc', {})
-    cc.pop('a_s', None)
-    cc.pop('b_s', None)
-    wake = WakeModelManager(velocity_model = CumulativeGaussCurlVelocityDeficitAsBs(**cc),
-                            deflection_model = GaussVelocityDeflection(**farm_dict['wake']['wake_deflection_parameters']['gauss']),
-                            turbulence_model= CrespoHernandez(**farm_dict['wake']['wake_turbulence_parameters']['crespo_hernandez']),
-                            combination_model = SOSFS(),
-                            enable_secondary_steering = farm_dict['wake']['enable_secondary_steering'],
-                            enable_yaw_added_recovery = farm_dict['wake']['enable_yaw_added_recovery'],
-                            #enable_active_wake_mixing = farm_dict['wake']['enable_active_wake_mixing'],
-                            enable_transverse_velocities = farm_dict['wake']['enable_transverse_velocities'])
 
+def create_wake_asbs(farm_dict):
+    wake_dict = farm_dict['wake']
+
+    vel_model_string = wake_dict['model_strings']['velocity_model'].lower()
+    vel_model = MODEL_MAP["velocity_model"][vel_model_string]
+    vel_parameters = farm_dict.get('wake', {}).get('wake_velocity_parameters', {}).get(vel_model_string, {})
+    vel_parameters.pop('a_s', None)
+    vel_parameters.pop('b_s', None)
+
+    # Get deflection model
+    def_model_string = wake_dict['model_strings']['deflection_model'].lower()
+    def_model = MODEL_MAP["deflection_model"][def_model_string]
+    if def_model_string == "none":
+        def_model_parameters = None
+    else:
+        def_model_parameters = wake_dict['wake_deflection_parameters'][def_model_string]
+
+    # Get turbulence model
+    turb_model_string = wake_dict['model_strings']['turbulence_model'].lower()
+    turb_model = MODEL_MAP["turbulence_model"][turb_model_string]
+    if turb_model_string == "none":
+        turb_model_parameters = None
+    else:
+        turb_model_parameters = wake_dict['wake_turbulence_parameters'][turb_model_string]
+
+    # Get wake combination model
+    combo_model_string = wake_dict['model_strings']['combination_model'].lower()
+    combo_model = MODEL_MAP["combination_model"][combo_model_string]
+
+
+    wake = WakeModelManager(velocity_model = vel_model(**vel_parameters),
+                            deflection_model=def_model(**def_model_parameters),
+                            turbulence_model=turb_model(**turb_model_parameters),
+                            combination_model=combo_model(),
+                            enable_secondary_steering = wake_dict['enable_secondary_steering'],
+                            enable_yaw_added_recovery = wake_dict['enable_yaw_added_recovery'],
+                            enable_active_wake_mixing = wake_dict['enable_active_wake_mixing'],
+                            enable_transverse_velocities = wake_dict['enable_transverse_velocities'])
 
     return wake
 
@@ -140,6 +169,7 @@ def create_grid(layout, generator, farm, flow):
                                 grid_resolution=3)
     return grid
 
+
 def create_farm(layout, generator, sorted_indices):
     farm = Farm.create(layout_x = layout["layout_x"],
                         layout_y = layout["layout_y"], 
@@ -147,10 +177,11 @@ def create_farm(layout, generator, sorted_indices):
                         turbine_class =Turbine ).initialize(sorted_indices)    
     return farm
 
+
 def create_flow_field(flow, grid):
     return FlowField(**flow).initialize_velocity_field(grid)
 
-def create_state(cfg: CCConfig, learn_as_bs = False):
+def create_state(cfg: Config, learn_as_bs = False):
     
     if learn_as_bs:
         wake = create_wake_asbs(cfg.farm)
@@ -160,8 +191,7 @@ def create_state(cfg: CCConfig, learn_as_bs = False):
     farm = create_farm(cfg.layout, cfg.generator, grid.sorted_indices)
     flow = create_flow_field(cfg.flow_field, grid)
 
-    return CCState(farm, grid, flow, wake)
-
+    return State(farm, grid, flow, wake)
 
 def alter_yaw_angles(yaw_angles, state):
     idx = state.grid.sorted_indices[:, :, 0, 0]
@@ -173,7 +203,7 @@ def alter_yaw_angles(yaw_angles, state):
     return new_state
 
 
-def turbine_powers(state: CCState) -> jnp.ndarray:
+def turbine_powers(state: State) -> jnp.ndarray:
     return power(
         velocities=state.flow.u,
         air_density=state.flow.air_density,

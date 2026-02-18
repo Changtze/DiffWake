@@ -1,3 +1,4 @@
+import numpy as np
 import yaml
 import jax.numpy as jnp
 import os
@@ -9,9 +10,52 @@ from .wake import WakeModelManager
 from typing import Callable, Any, Optional,NamedTuple,Dict
 from .turbine.turbine import thrust_coefficient, axial_induction
 from jax import lax, config
-from jax.tree_util import tree_map
+from jax.tree_util import tree_map, register_pytree_node
 from .interp1d import interp1d
-from .util_agnostic import set_precision, get_dtype
+
+
+# ---------- precision --------------------------------------------------------
+_CURRENT_DTYPE = jnp.float32
+
+def set_precision(precision: str):
+    """
+    Sets the JAX floating point precision.
+    
+    Args:
+        precision: One of 'fp16', 'fp32', 'fp64' (or 'half', 'single', 'double').
+                   Case-insensitive.
+    
+    Returns:
+        The JAX dtype corresponding to the selected precision.
+    """
+    global _CURRENT_DTYPE
+    precision = precision.lower()
+    
+    if precision in ("fp64", "double", "float64"):
+        config.update("jax_enable_x64", True)
+        _CURRENT_DTYPE = jnp.float64
+    elif precision in ("fp32", "single", "float32"):
+        config.update("jax_enable_x64", False)
+        _CURRENT_DTYPE = jnp.float32
+    elif precision in ("fp16", "half", "float16"):
+        config.update("jax_enable_x64", False)
+        _CURRENT_DTYPE = jnp.float16
+    elif precision in ("bf16", "brain", "bfloat16"):
+        config.update("jax_enable_x64", False)
+        _CURRENT_DTYPE = jnp.bfloat16
+    else:
+        raise ValueError(f"Unknown precision: {precision}")
+        
+    return _CURRENT_DTYPE
+
+def get_dtype():
+    """Returns the current floating point dtype used for simulations."""
+    if config.x64_enabled:
+        return jnp.float64
+    if _CURRENT_DTYPE == jnp.float16:
+        return jnp.float16
+    return jnp.float32
+
 
 # ---------- helpers --------------------------------------------------------
 def _to_jax(pytree):
@@ -21,40 +65,6 @@ def _to_jax(pytree):
 def index_dtype():
     return jnp.int64 if config.x64_enabled else jnp.int32
 
-@struct.dataclass
-class GCHConfig:
-    generator: Dict
-    farm: Dict
-    flow_field: Dict
-    layout: Dict
-    def set(self, **kwargs):
-        return set_cfg(self, **kwargs)
-
-@struct.dataclass
-class GCHState:
-    farm: Farm
-    grid: TurbineGrid
-    flow: FlowField
-    wake: WakeModelManager
-
-@struct.dataclass
-class CCConfig:
-    generator: Dict
-    farm: Dict
-    flow_field: Dict
-    layout: Dict
-    def set(self, **kwargs):
-        return set_cfg(self, **kwargs)
-
-@struct.dataclass
-class CCState:
-    farm: Farm            # already immutable
-    grid: TurbineGrid     # immutable
-    flow: FlowField       # uses .replace() for updates
-    wake: WakeModelManager
-    # yaw_angles: jnp.ndarray     # Not sure what this should be
-
-
 def average_velocity_jax(v, method="cubic-mean"):
     if method == "simple-mean":
         return jnp.mean(v, axis=(-2, -1), keepdims=True)
@@ -62,7 +72,6 @@ def average_velocity_jax(v, method="cubic-mean"):
         m3 = jnp.mean(v**3, axis=(-2, -1), keepdims=True)
         return jnp.cbrt(m3)                 # exact libm cbrt, matches Torch
     raise ValueError
-
 
 def make_rotor_masks_old(x_coord, y_coord, x_c, y_c, D, tol=0.01):
     """
@@ -82,7 +91,6 @@ def make_rotor_masks_old(x_coord, y_coord, x_c, y_c, D, tol=0.01):
     )
     return rotor_mask
 
-
 def make_rotor_masks(x_coord, y_coord, x_c, y_c, D, tol=0.01):
     B, T, Ny, Nz = x_coord.shape
     rad = 0.51 * D
@@ -98,10 +106,8 @@ def make_rotor_masks(x_coord, y_coord, x_c, y_c, D, tol=0.01):
     # mask[b, i, j, :, :] = rotor-mask för turbin i på grid j
     return mask            # shape (B, T, T, Ny, Nz)
 
-
 def smooth_step(x, edge, width=1.0):
     return 1.0 / (1.0 + jnp.exp(-(x - edge) / width))
-
 
 def smooth_box(x, centre, half, inv_w=2.0):
     s1 = lax.sigmoid((x - (centre - half)) * inv_w)
@@ -110,31 +116,7 @@ def smooth_box(x, centre, half, inv_w=2.0):
 
 
 @struct.dataclass
-class GCHParams:
-    B: int
-    T: int
-    rotor_diameter: float
-    hub_height: float
-    TSR: float
-    wind_shear: float
-    wind_veer: float
-    gr_square: float  # Ny * Nz
-    enable_secondary_steering: bool = False
-    enable_transverse_velocities: bool = False
-    enable_yaw_added_recovery: bool = False
-
-
-
-class GCHResult(NamedTuple):
-    turb_u_wake: jnp.ndarray
-    u_sorted: jnp.ndarray
-    ti: jnp.ndarray
-    v_sorted: jnp.ndarray
-    w_sorted: jnp.ndarray
-
-
-@struct.dataclass
-class CCParams:
+class Params:
     # Grid/turbine constants
     B: int
     T: int
@@ -143,12 +125,14 @@ class CCParams:
     TSR: float
     wind_shear: float
     wind_veer: float
-    gr_square: float  # Ny * Nz
+    gr_square: float
     enable_secondary_steering: bool = False
     enable_transverse_velocities: bool = False
     enable_yaw_added_recovery: bool = False
 
-class CCResult(NamedTuple):
+
+# General result object
+class Result(NamedTuple):
     turb_u_wake: jnp.ndarray
     u_sorted: jnp.ndarray
     ti: jnp.ndarray
@@ -157,38 +141,51 @@ class CCResult(NamedTuple):
 
 
 @struct.dataclass
-class GCHDynamicState:
-    turb_u_wake: jnp.ndarray
-    turb_inflow: jnp.ndarray
-    ti:          jnp.ndarray
-    v_sorted:    jnp.ndarray
-    w_sorted:    jnp.ndarray
+class Config:
+    generator: Dict
+    farm: Dict
+    flow_field: Dict
+    layout: Dict
+    def set(self, **kwargs):
+        return set_cfg(self, **kwargs)
 
 
 @struct.dataclass
-class CCDynamicState:
-    turb_u_wake: jnp.ndarray     # (B,T,Ny,Nz)
-    turb_inflow: jnp.ndarray     # (B,T,Ny,Nz)
-    ti:          jnp.ndarray     # (B,T,1,1)
-    v_sorted:      jnp.ndarray
-    w_sorted:      jnp.ndarray
-    Ctmp:        jnp.ndarray     # (T,B,T,Ny,Nz)
-    ct_acc: jnp.ndarray         # (B, T, 1, 1)
-    
+class State:
+    farm: Farm
+    grid: TurbineGrid
+    flow: FlowField
+    wake: WakeModelManager
+
+
+@struct.dataclass
+class DynamicState:
+    # Need a factory method to make this wake-model specific?
+    turb_u_wake: jnp.ndarray
+    turb_inflow: jnp.ndarray
+    ti: jnp.ndarray
+    v_sorted: jnp.ndarray
+    w_sorted: jnp.ndarray
+
+    # Model-specific buffers
+    Ctmp: Optional[jnp.ndarray] = None
+    ct_acc: Optional[jnp.ndarray] = None
+
+
 @struct.dataclass
 class Thrust:
     ti: jnp.ndarray
     rho: float
 
-    thrust_fn: Callable= struct.field(pytree_node=False)
-    tilt_interp: Callable= struct.field(pytree_node=False)
+    thrust_fn: Callable = struct.field(pytree_node=False)
+    tilt_interp: Callable = struct.field(pytree_node=False)
     correct_cp_ct_for_tilt: bool
-    power_thrust_table: dict = struct.field(pytree_node=False)
+    power_thrust_table: dict = struct.field(pytree_node=True)
 
     def __call__(self, velocities: jnp.ndarray,
                  yaw_angles: jnp.ndarray,
                  tilt_angles: jnp.ndarray) -> jnp.ndarray:
-        
+
         return thrust_coefficient(
             velocities=velocities,
             yaw_angles=yaw_angles,
@@ -199,23 +196,24 @@ class Thrust:
             power_thrust_table=self.power_thrust_table,
         )
 
+
 @struct.dataclass
 class AxialInduction:
     ti: jnp.ndarray
     rho: float
     pset: jnp.ndarray
 
-    axial_induction_function: Callable= struct.field(pytree_node=False)
-    tilt_interp: Callable= struct.field(pytree_node=False)
+    axial_induction_function: Callable = struct.field(pytree_node=False)
+    tilt_interp: Callable = struct.field(pytree_node=False)
     correct_cp_ct_for_tilt: bool
 
-    power_thrust_table: dict = struct.field(pytree_node=False)
+    power_thrust_table: dict = struct.field(pytree_node=True)
     cubature_weights: Optional[jnp.ndarray]
     multidim_condition: Optional[Any] = None  # can be jnp.ndarray or None
 
-    def __call__(self, velocities: jnp.ndarray, 
-                 yaw_angles: jnp.ndarray, 
-                 tilt_angles: jnp.ndarray, 
+    def __call__(self, velocities: jnp.ndarray,
+                 yaw_angles: jnp.ndarray,
+                 tilt_angles: jnp.ndarray,
                  ix_filter: Optional[int] = None) -> jnp.ndarray:
 
         return axial_induction(
@@ -230,20 +228,32 @@ class AxialInduction:
             cubature_weights=self.cubature_weights,
             multidim_condition=self.multidim_condition,
         )
-    
 
-def init_dynamic_state(grid, flow) -> CCDynamicState:
+
+def init_dynamic_state(grid, flow, velocity_model_name: str) -> DynamicState:
+    """
+    RETURN GENERAL DYNAMIC STATE PARAMETERS DEPENDING ON WAKE MODEL
+    """
     B, T, Ny, Nz = grid.x_sorted.shape
-    zeros = jnp.zeros_like(_to_jax(grid.x_sorted))
-    ti = jnp.broadcast_to(flow.turbulence_intensities[:, None, None, None], (B, T, 3, 3))
-    return CCDynamicState(
+    DTYPE = get_dtype()
+    zeros = jnp.zeros((B, T, Ny, Nz), dtype=DTYPE)
+    ti = jnp.broadcast_to(flow.turbulence_intensities[:, None, None, None].astype(DTYPE), (B, T, 3, 3))
+
+    Ctmp        = None
+    ct_acc = None
+
+    if velocity_model_name == "cc":
+        Ctmp  = jnp.zeros((T, B, T, Ny, Nz), DTYPE)
+        ct_acc=jnp.zeros((B, T, 1, 1), DTYPE) # <— running CTs
+
+    return DynamicState(
         turb_u_wake = zeros.copy(),
-        turb_inflow = _to_jax(flow.u_initial_sorted).copy(),
-        ti          = ti.copy(),
-        v_sorted      = zeros.copy(),
-        w_sorted      = zeros.copy(),
-        Ctmp        = jnp.zeros((T, B, T, Ny, Nz), zeros.dtype),
-        ct_acc=jnp.zeros((B, T, 1, 1), zeros.dtype),  # <— running CTs
+        turb_inflow = _to_jax(flow.u_initial_sorted).astype(DTYPE).copy(),
+        ti = ti.copy(),
+        v_sorted = zeros.copy(),
+        w_sorted = zeros.copy(),
+        Ctmp=Ctmp,
+        ct_acc=ct_acc
     )
 
 
@@ -272,10 +282,9 @@ def get_thrust_fn(flow, farm):
         power_thrust_table     = farm.power_thrust_table,
     )
 
-
-
-def make_constants(state: CCState):
-    g   = _to_jax(state.grid)
+def make_constants(state: State):
+    """TO-DO: MAKE CONSTANTS FOR A GENERAL WAKE MODEL STATE"""
+    g = _to_jax(state.grid)
     fld = _to_jax(state.flow)
     farm = state.farm
 
@@ -284,52 +293,56 @@ def make_constants(state: CCState):
     y_c = jnp.mean(y, axis=(2,3), keepdims=True)
     z_c = jnp.mean(z, axis=(2,3), keepdims=True)
 
+    DTYPE = get_dtype()
     const = dict(
-        x_coord = x,  y_coord = y,  z_coord = z,
-        x_c = x_c,    y_c = y_c,    z_c = z_c,
-        u_init  = fld.u_initial_sorted.copy(),
-        dudz_init = fld.dudz_initial_sorted.copy(),
-        ambient_ti = fld.turbulence_intensities[:, None, None, None].copy(),
+        x_coord = x.astype(DTYPE),  y_coord = y.astype(DTYPE),  z_coord = z.astype(DTYPE),
+        x_c = x_c.astype(DTYPE),    y_c = y_c.astype(DTYPE),    z_c = z_c.astype(DTYPE),
+        u_init  = fld.u_initial_sorted.astype(DTYPE).copy(),
+        dudz_init = fld.dudz_initial_sorted.astype(DTYPE).copy(),
+        ambient_ti = fld.turbulence_intensities[:, None, None, None].astype(DTYPE).copy(),
     )
+    return const, _to_jax(farm.yaw_angles_sorted).astype(DTYPE), _to_jax(farm.tilt_angles_sorted).astype(DTYPE)
 
-    return const, _to_jax(farm.yaw_angles_sorted), _to_jax(farm.tilt_angles_sorted)
 
-def make_params(state: CCState) -> CCParams:
+def make_params(state: State) -> Params:
     B, T, _, _ = state.grid.x_sorted.shape
 
-    params = CCParams(
-        B = B, T = T,
+    params = Params(
+        B = B,
+        T = T,
         rotor_diameter = state.farm.rotor_diameter,
-        hub_height     = state.farm.hub_height,
-        TSR            = state.farm.TSR,
-        wind_shear     = state.flow.wind_shear,
-        wind_veer      = state.flow.wind_veer,
-        gr_square      = state.grid.grid_resolution ** 2)
+        hub_height = state.farm.hub_height,
+        TSR = state.farm.TSR,
+        wind_shear = state.flow.wind_shear,
+        wind_veer = state.flow.wind_veer,
+        gr_square = state.grid.grid_resolution ** 2,
+        enable_secondary_steering = state.wake.enable_secondary_steering,
+        enable_yaw_added_recovery = state.wake.enable_yaw_added_recovery,
+        enable_transverse_velocities = state.wake.enable_transverse_velocities
+    )
+
+    return (params,
+            state.wake.enable_secondary_steering,
+            state.wake.enable_yaw_added_recovery,
+            state.wake.enable_transverse_velocities)
 
 
-    return (params, 
-        state.wake.enable_secondary_steering,
-        state.wake.enable_transverse_velocities,
-        state.wake.enable_yaw_added_recovery)
-
-
-def to_result(st: CCDynamicState) -> CCResult:
-    return CCResult(                # keep field order explicit
+def to_result(st: DynamicState) -> Result:
+    return Result(
         turb_u_wake = st.turb_u_wake,
         u_sorted = st.turb_inflow,
-        ti          = st.ti,
-        v_sorted      = st.v_sorted,
-        w_sorted      = st.w_sorted,
+        ti = st.ti,
+        v_sorted = st.v_sorted,
+        w_sorted = st.w_sorted
     )
 
 
-# --- Loader definition ---
+# Loader definition
 class LoaderWithInclude(yaml.SafeLoader):
     def __init__(self, stream):
-        self.name = stream.name  # required by _include()
+        self.name = stream.name
         super().__init__(stream)
 
-# --- !include handler ---
 def _include(loader, node):
     rel_path = loader.construct_scalar(node)
     base_dir = os.path.dirname(loader.name)
@@ -337,17 +350,19 @@ def _include(loader, node):
     with open(full_path, "r") as inc:
         return yaml.load(inc, LoaderWithInclude)
 
-# REGISTER after defining the class
+
+# Register after defining the class
 LoaderWithInclude.add_constructor("!include", _include)
 
-# --- YAML loader with conversion ---
+
+# YAML loader with conversion
 def load_yaml(path):
     with open(path, "r") as f:
         data = yaml.load(f, LoaderWithInclude)
 
     def _to_jax(obj):
         if isinstance(obj, list) and all(isinstance(x, (int, float)) for x in obj):
-            return jnp.array(obj)
+            return np.array(obj)
         if isinstance(obj, dict):
             return {k: _to_jax(v) for k, v in obj.items()}
         if isinstance(obj, list):
@@ -357,26 +372,26 @@ def load_yaml(path):
     return _to_jax(data)
 
 
+def set_cfg(cfg: Config,
+            wind_speeds: jnp.ndarray = None,
+            wind_directions: jnp.ndarray = None,
+            turbulence_intensities: jnp.ndarray = None,
+            layout_x: jnp.ndarray = None,
+            layout_y: jnp.ndarray = None,
+            yaw_angles: jnp.ndarray = None,
+            ):
 
-def set_cfg(cfg,
-    wind_speeds=None,
-    wind_directions=None,
-    turbulence_intensities=None,
-    layout_x=None,
-    layout_y=None,
-    yaw_angles=None,
-):
     # Make shallow copies of the dicts
     flow_field = cfg.flow_field.copy()
     layout     = cfg.layout.copy()
     farm       = cfg.farm.copy()
 
     if wind_speeds is not None:
-        flow_field["wind_speeds"] = wind_speeds
+        flow_field['wind_speeds'] = wind_speeds
     if wind_directions is not None:
-        flow_field["wind_directions"] = wind_directions
+        flow_field['wind_directions'] = wind_directions
     if turbulence_intensities is not None:
-        flow_field["turbulence_intensities"] = turbulence_intensities
+        flow_field['turbulence_intensities'] = turbulence_intensities
 
     if layout_x is not None:
         layout["layout_x"] = layout_x
@@ -386,11 +401,9 @@ def set_cfg(cfg,
     if yaw_angles is not None:
         farm["yaw_angles"] = yaw_angles
 
-    # Return a new CCConfig with updated dicts
-    return CCConfig(
-        generator=cfg.generator,  # unchanged
+    return Config(
+        generator=cfg.generator,
         farm=farm,
         flow_field=flow_field,
-        layout=layout,
+        layout=layout
     )
-

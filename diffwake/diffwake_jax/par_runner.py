@@ -2,9 +2,9 @@ from jax import lax, tree, device_put, jit
 import jax.numpy as jnp
 import jax
 from .util import (
-    CCState,
+    State,
     get_axial_induction_fn,
-    get_thrust_fn, make_params,to_result,_to_jax, CCDynamicState,
+    get_thrust_fn, make_params,to_result,_to_jax, DynamicState,
     get_dtype
 )
 from .solver import cc_solver_step
@@ -15,7 +15,7 @@ from dataclasses import replace as dc_replace
 #     return jnp.float64 if jax.config.x64_enabled else jnp.float32
 
 
-def make_constants(state: CCState):
+def make_constants(state: State):
     g   = _to_jax(state.grid)
     fld = _to_jax(state.flow)
     farm = state.farm
@@ -37,26 +37,33 @@ def make_constants(state: CCState):
 
 #
 
-def init_dynamic_state(grid, flow, batch_size = None) -> CCState:
+def init_dynamic_state(grid, flow, velocity_model_string: str, batch_size = None) -> State:
     B, T, Ny, Nz = grid.x_sorted.shape
     if batch_size is None:
         batch_size = B
     DTYPE = get_dtype()
     zeros = jnp.zeros((batch_size, T, Ny, Nz), dtype=DTYPE)
     ti = jnp.broadcast_to(flow.turbulence_intensities[:, None, None, None], (B, T, 3, 3)).astype(DTYPE)[:batch_size]
-    return CCDynamicState(
+
+    Ctmp = None
+    ct_acc = None
+
+    if velocity_model_string == "cc":
+        Ctmp        = jnp.zeros((T, batch_size, T, Ny, Nz), DTYPE),
+        ct_acc=jnp.zeros((batch_size, T, 1, 1), DTYPE),  # <— running CTs
+
+    return DynamicState(
         turb_u_wake = zeros.copy(),
         turb_inflow = _to_jax(flow.u_initial_sorted[:batch_size]).astype(DTYPE).copy(),
         ti          = ti.copy(),
         v_sorted      = zeros.copy(),
         w_sorted      = zeros.copy(),
-        Ctmp        = jnp.zeros((T, batch_size, T, Ny, Nz), DTYPE),
-        ct_acc=jnp.zeros((batch_size, T, 1, 1), DTYPE),  # <— running CTs
+        Ctmp = Ctmp,
+        ct_acc = ct_acc
     )
 
 
-
-def make_par_runner(state: CCState):
+def make_par_runner(state: State):
     axial_fn  = get_axial_induction_fn(state.flow, state.farm, state.grid)
     thrust_fn = get_thrust_fn(state.flow, state.farm)
 
@@ -66,11 +73,10 @@ def make_par_runner(state: CCState):
      enable_yaw_added_recovery) = make_params(state)
 
     const, yaw_angles, tilt_angles = make_constants(state)
-    init = init_dynamic_state(state.grid, state.flow)
+    init = init_dynamic_state(state.grid, state.flow, state.wake.model_strings['velocity_model'])
 
     # Put once on device & stop grads through constants
     const       = tree.map(lambda x: lax.stop_gradient(device_put(x)), const)
-
     tilt_angles = lax.stop_gradient(device_put(tilt_angles))
     yaw_angles = lax.stop_gradient(device_put(yaw_angles))
 
@@ -85,6 +91,7 @@ def make_par_runner(state: CCState):
     velocity_model   = state.wake.velocity_model
     deflection_model = state.wake.deflection_model
     turbulence_model = state.wake.turbulence_model
+    combination_model = state.wake.combination_model
 
     T = int(params.T)
     B = int(params.B)
@@ -128,7 +135,7 @@ def make_par_runner(state: CCState):
 
 
 
-def make_sub_par_runner(state: CCState, batch_size = 512):
+def make_sub_par_runner(state: State, batch_size = 512):
     axial_fn  = get_axial_induction_fn(state.flow, state.farm, state.grid)
     thrust_fn = get_thrust_fn(state.flow, state.farm)
 
@@ -139,7 +146,7 @@ def make_sub_par_runner(state: CCState, batch_size = 512):
 
     const, yaw_angles, tilt_angles = make_constants(state)
 
-    init = init_dynamic_state(state.grid, state.flow, batch_size=batch_size)
+    init = init_dynamic_state(state.grid, state.flow, state.wake.model_strings['velocity_model'], batch_size=batch_size)
     x_coord = const["x_coord"]; y_coord = const["y_coord"]; z_coord = const["z_coord"]
     x_c     = const["x_c"];     y_c     = const["y_c"];     z_c     = const["z_c"]
     u_init  = const["u_init"];  dudz_init = const["dudz_init"]

@@ -184,13 +184,14 @@ def yaw_added_turbulence_mixing(u_i, I_i, v_i, w_i, turb_v_i, turb_w_i):
     average_u_i = jnp.sign(u_i) * jnp.abs(u_i)**3
     average_u_i = jnp.mean(average_u_i, axis=(1, 2, 3))**(1 / 3)
 
-    k = (average_u_i * I_i)**2 / (2.0 / 3.0)
+    k = (average_u_i * I_i) ** 2 / (2.0 / 3.0)
     u_term = jnp.sqrt(2.0 * k)
     v_term = jnp.mean(v_i + turb_v_i, axis=(1, 2, 3))
     w_term = jnp.mean(w_i + turb_w_i, axis=(1, 2, 3))
 
     k_total = 0.5 * (u_term**2 + v_term**2 + w_term**2)
     I_total = jnp.sqrt((2.0 / 3.0) * k_total) / average_u_i
+
     I_mixing = I_total - I_i
 
     return I_mixing[:, None, None, None]
