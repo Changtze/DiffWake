@@ -18,6 +18,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
+from slsqp_jax import SLSQP
 
 # DiffWake imports
 from diffwake.diffwake_jax.model import load_input, create_state
@@ -67,7 +68,6 @@ def yaw_penalty_sq(gamma: jax.Array,
     violation_max = jax.nn.softplus(gamma - gamma_max)
 
     return jnp.sum(violation_min + violation_max)
-
 
 
 def setup_dtype(use_float64: bool = True) -> jnp.dtype:
@@ -132,7 +132,7 @@ def parse_args() -> argparse.Namespace:
                    help="How to initialize restarts.")
 
     # Optimisation configuration
-    p.add_argument("--penalty-weight", type=float, default=1e-3, help="Weight of yaw penalty term in objective.")
+    p.add_argument("--penalty-weight", type=float, default=1e2, help="Weight of yaw penalty term in objective.")
     p.add_argument("--restarts", type=int, default=1)
     p.add_argument("--max-iter", type=int, default=200, help="Maximum number of optimiser iterations.")
     p.add_argument("--patience", type=int, default=10, help="Early stop if loss change is less than min_delta for this many steps")
@@ -201,10 +201,10 @@ def make_losses(state,
             state.farm.power_thrust_table,
             vel,
             state.flow.air_density,
-            yaw_angles=state.farm.yaw_angles
+            yaw_angles=yaw_angles
         )
         case_power = jnp.sum(pow_mw, axis=1)
-        return -jnp.sum(case_power * weights)  # scalar
+        return -jnp.sum(case_power * weights) / 1e6  # scalar in MW
 
     def loss_from_omega(omega: jax.Array,
                         gamma_min: jax.Array,
@@ -212,6 +212,8 @@ def make_losses(state,
         gammas = gamma_from_omega_sig(omega, gamma_max)
         phys = loss_from_yaw(gammas)
         yaw = yaw_penalty_sq(gammas, gamma_min, gamma_max)
+        # Power is in MW (~1-100), yaw penalty is in rad^2 (~0-1)
+        # We need to scale penalty_weight accordingly.
         return phys + pw * yaw
 
     return loss_from_yaw, loss_from_omega, pw
@@ -254,7 +256,7 @@ def save_run(out_dir: Path,
         best_power_MW=float(best_power_MW),
         final_loss=float(final_loss),
         final_sep_penalty=float(final_yaw_penalty),
-        N_turbines=int(best_yaw.shape[0]),
+        N_turbines=int(best_yaw.shape[1]),
         timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         **config_meta,
     )
@@ -309,7 +311,7 @@ def main():
     # Optimiser: try L-BFGS with Strong-Wolfe zoom line search
     opt = optax.lbfgs(
         linesearch=optax.scale_by_zoom_linesearch(
-            max_linesearch_steps=5,
+            max_linesearch_steps=10,
             verbose=False,
         )
     )
@@ -379,7 +381,6 @@ def main():
 
         t0 = time.time()
 
-        # Post-compilation optimisation loop
         for it in range(1, args.max_iter + 1):
             t1 = time.time()
             omega, opt_state, v, g, phys, yaw_vio = step(omega, opt_state)
@@ -409,78 +410,80 @@ def main():
                 )
                 break
 
-            print(f"L-BFGS time (restart {m}): {time.time()-t0:.3f}s  iters={last_it}")
+        print(f"L-BFGS time (restart {m}): {time.time()-t0:.3f}s  iters={last_it}")
 
-            # Final evaluation
-            gamma_final = gamma_from_omega_sig(omega, gamma_max)
-            final_loss = loss_from_yaw(gamma_final)
-            jax.block_until_ready(final_loss)
-            final_power = -float(final_loss)
-            print(f"[restart {m}] final mean power (MW): {final_power:.6f}")
+        # Final evaluation
+        gamma_final = gamma_from_omega_sig(omega, gamma_max)
+        final_loss = loss_from_yaw(gamma_final)
+        jax.block_until_ready(final_loss)
+        final_power = -float(final_loss)
+        print(f"[restart {m}] final mean power (MW): {final_power:.6f}")
 
-            if final_power > best_power:
-                best_power = final_power
-                best_yaw = gamma_final
-                best_idx = m
-                best_omega = omega
-                best_yaw_vio = float(
-                    yaw_penalty_sq(gamma_final, gamma_min, gamma_max)
-                )
-                best_loss = float(final_loss)
+        if final_power > best_power:
+            best_power = final_power
+            best_yaw = gamma_final
+            best_idx = m
+            best_omega = omega
+            best_yaw_vio = float(
+                yaw_penalty_sq(gamma_final, gamma_min, gamma_max)
+            )
+            best_loss = float(final_loss)
 
-        print(f"\n === Finished {args.restarts} restarts in {time.time() - total_t0:.3f}s ===")
-        print(f"Best restart: {best_idx}, best mean power (MW): {best_power:.6f}")
-        print("Best yaw angles (degrees): ")
-        print(np.rad2deg(np.asarray(best_yaw)))
+    elapsed_time = time.time() - total_t0
+    print(f"\n === Finished {args.restarts} restarts in {elapsed_time:.3f}s ===")
+    print(f"Best restart: {best_idx}, best mean power (MW): {best_power:.6f}")
+    print("Best yaw angles (degrees): ")
+    print(np.rad2deg(np.array(best_yaw)))
 
-        # Per-case mean power (MW) for best yaw angles
-        out = runner(best_yaw)
-        vel = average_velocity_jax(out.u_sorted)
-        pow_mw = power(
-            state.farm.power_thrust_table,
-            vel,
-            state.flow.air_density,
-            yaw_angles=state.farm.yaw_angles,
-        ) / (1e6 if DTYPE == jnp.float32 else jnp.asarray(1e6, dtype=DTYPE))
-        per_case_power_MW = jnp.sum(pow_mw,  axis=1)
+    # Per-case mean power (MW) for best yaw angles
+    out = runner(best_yaw)
+    vel = average_velocity_jax(out.u_sorted)
+    pow_mw = power(
+        state.farm.power_thrust_table,
+        vel,
+        state.flow.air_density,
+        yaw_angles=best_yaw,
+    ) / 1e6
+    per_case_power_MW = jnp.sum(pow_mw,  axis=1)
 
-        # Output dir
-        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_dir = args.out_dir / stamp
-        wind_dir_deg = np.asarray(jnp.rad2deg(wind_dir_rad), dtype=float)
-        wind_speed_np = np.asarray(wind_speed, dtype=float)
-        weights_np = np.asarray(weights.reshape(-1), dtype=float)
+    # Output dir
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = args.out_dir / stamp
+    wind_dir_deg = np.asarray(jnp.rad2deg(wind_dir_rad), dtype=float)
+    wind_speed_np = np.asarray(wind_speed, dtype=float)
+    weights_np = np.asarray(weights.reshape(-1), dtype=float)
 
-        # Write optimisation metadata
-        config_meta = dict(
-            optimizer="optax.lbfgs+sw_zoom",
-            restarts=int(args.restarts),
-            maxiter=int(args.max_iter),
-            patience=int(args.patience),
-            min_delta=float(args.min_delta),
-            seed=int(args.seed),
-            float64=bool(args.float64),
-            penalty_weight=float(args.penalty_weight),
-            gamma_min=float(args.gamma_min),
-            gamma_max=float(args.gamma_max),
-            diameter=float(diameter),
-            dtype="float64" if DTYPE == jnp.float64 else "float32",
-            init_mode=args.init_mode,
-        )
+    # Write optimisation metadata
+    config_meta = dict(
+        optimizer="optax.lbfgs+sw_zoom",
+        restarts=int(args.restarts),
+        maxiter=int(args.max_iter),
+        patience=int(args.patience),
+        min_delta=float(args.min_delta),
+        seed=int(args.seed),
+        float64=bool(args.float64),
+        penalty_weight=float(args.penalty_weight),
+        gamma_min=float(args.gamma_min),
+        gamma_max=float(args.gamma_max),
+        diameter=float(diameter),
+        dtype="float64" if DTYPE == jnp.float64 else "float32",
+        elapsed_time=float(elapsed_time),
+        init_mode=args.init_mode,
+    )
 
-        save_run(
-            out_dir,
-            best_yaw=best_yaw,
-            best_omega=best_omega,
-            best_power_MW=best_power,
-            final_loss=best_loss,
-            final_yaw_penalty=(0.0 if best_yaw_vio is None else best_yaw_vio),
-            per_case_power_MW=per_case_power_MW,
-            wind_dir_deg=wind_dir_deg,
-            wind_speed=wind_speed_np,
-            weights=weights_np,
-            config_meta=config_meta,
-        )
+    save_run(
+        out_dir,
+        best_yaw=best_yaw,
+        best_omega=best_omega,
+        best_power_MW=best_power,
+        final_loss=best_loss,
+        final_yaw_penalty=(0.0 if best_yaw_vio is None else best_yaw_vio),
+        per_case_power_MW=per_case_power_MW,
+        wind_dir_deg=wind_dir_deg,
+        wind_speed=wind_speed_np,
+        weights=weights_np,
+        config_meta=config_meta,
+    )
 
 if __name__ == "__main__":
     main()

@@ -189,7 +189,7 @@ flow_field:
   - 270.0
   wind_shear: 0.12
   wind_speeds:
-  - 9.6
+  - 13.5
   wind_veer: 0.0
 
 wake:

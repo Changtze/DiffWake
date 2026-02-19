@@ -419,7 +419,7 @@ def main():
     elif args.init_mode == "perturb":
         layouts0 = sample_initial_layouts_perturb(
             key, args.restarts, ref_layout, box, (args.perturb_sigma_x, args.perturb_sigma_y), DTYPE
-        )  # (M-1,N,2)
+        )  # (M-1,N,2)S
     else:
         # grid: we’ll use ref_layout for restart 0 and make (M-1) LHS for diversity
         if args.restarts > 1:
