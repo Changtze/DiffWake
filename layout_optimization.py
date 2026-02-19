@@ -131,12 +131,22 @@ def distance_penalty_sq(points: jax.Array,
                         min_distance: float,
                         dtype=jnp.float32) -> jax.Array:
     """Soft, differentiable penalty for violating pairwise min distances."""
+    # x-y coordinate differences
     diffs = points[:, None, :] - points[None, :, :]         # (N,N,2)
+
+    # Pythagorean distance
     sq = jnp.sum(diffs * diffs, axis=-1)                    # (N,N)
+
+    # Squared minimum distance allowable
     md2 = jnp.asarray(min_distance, dtype=dtype) ** 2
+
+    # Number of turbines
     N = points.shape[0]
+
     # lower triangle mask (i > j)
     mask = jnp.tril(jnp.ones((N, N), dtype=bool), k=-1)
+
+    # if x < 0, softplus(x) ~ 0, if x > 0, softplus(x) > 0
     violation = jax.nn.softplus(md2 - sq)
     return jnp.sum(jnp.where(mask, violation, 0.0))
 

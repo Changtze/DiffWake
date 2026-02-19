@@ -25,7 +25,6 @@ from diffwake.diffwake_jax.yaw_runner import make_yaw_runner
 from diffwake.diffwake_jax.util import average_velocity_jax
 from diffwake.diffwake_jax.turbine.operation_models import power
 
-
 @dataclass
 class YawConstraints:
     gamma_min: float  # minimum allowable yaw angle
@@ -59,15 +58,32 @@ def gamma_from_omega_sig(omega: jax.Array,
     return gamma_max * jax.nn.sigmoid(omega)
 
 
+# def yaw_penalty_sq(gamma: jax.Array,
+#                    gamma_min: jax.Array,
+#                    gamma_max: jax.Array,
+#                    ) -> jax.Array:
+#     violation_min = jax.nn.softplus(gamma_min - gamma)
+#     violation_max = jax.nn.softplus(gamma - gamma_max)
+#
+#     return jnp.sum(violation_min + violation_max)
+
+
 def yaw_penalty_sq(gamma: jax.Array,
-                   gamma_min: jax.Array,
-                   gamma_max: jax.Array,
-                   ) -> jax.Array:
-    violation_min = jax.nn.softplus(gamma_min - gamma)
-    violation_max = jax.nn.softplus(gamma - gamma_max)
+                      gamma_min: jax.Array,
+                      gamma_max: jax.Array) -> jax.Array:
+    # parameters for softplus function
+    beta_1, beta_2 = 45, 146
+    alpha_1, alpha_2 = 9.8, 4
 
-    return jnp.sum(violation_min + violation_max)
+    # penalise yaw below gamma_min (should be positive if violated)
+    violation_min = (1.0 / beta_1) * jnp.log(1 + jnp.exp(beta_2 * (gamma_min - gamma)))
+    # print(violation_min)
 
+    # penalise yaw above gamma_max (should be positive if violated)
+    violation_max = (1.0 / alpha_1) * jnp.log(1 + jnp.exp(alpha_2 * (gamma_max - gamma)))
+    # print(violation_max)
+
+    return jnp.sum(violation_max + violation_min)
 
 def setup_dtype(use_float64: bool = True) -> jnp.dtype:
     jax.config.update("jax_enable_x64", use_float64)
@@ -131,7 +147,7 @@ def parse_args() -> argparse.Namespace:
                    help="How to initialize restarts.")
 
     # Optimisation configuration
-    p.add_argument("--penalty-weight", type=float, default=1e2, help="Weight of yaw penalty term in objective.")
+    p.add_argument("--penalty-weight", type=float, default=1.5, help="Weight of yaw penalty term in objective.")
     p.add_argument("--restarts", type=int, default=1)
     p.add_argument("--max-iter", type=int, default=200, help="Maximum number of optimiser iterations.")
     p.add_argument("--patience", type=int, default=10, help="Early stop if loss change is less than min_delta for this many steps")
@@ -143,9 +159,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--out-dir", type=Path, default=Path("results/yaw_lbfgs"), help="Base output directory.")
     return p.parse_args()
 
-
-# Do we write a state_runner or yaw_runner function?
-# Well state runner is just to run a wind condition or a "state"
 
 def build_state_runner(
         data_dir: Path,
@@ -269,7 +282,7 @@ def main():
     args = parse_args()
     DTYPE = setup_dtype(args.float64)
 
-    # define yaw misalignment angle constraint
+    # define yaw misalignment angle constraint (automatically converted to radians)
     yaw_constraints = YawConstraints(args.gamma_min, args.gamma_max)
     diameter = float(args.diameter)
 
@@ -293,12 +306,13 @@ def main():
         data_dir, args.farm_yaml, args.turbine_yaml, wind_dir_rad, wind_speed, turbulence, DTYPE
     )
 
-    # TO-DO: Reference yaw layout for perturb mode (completely unyawed)
-    ref_yaw = jnp.zeros((1, N), dtype=DTYPE)
+    # Reference yaw layout (bounded, non-zero yaw to initialise)
+    ref_yaw = jnp.ones((1, N), dtype=DTYPE) * 0.2  # avoid 0 yaw
 
     # Loss function
     loss_from_yaw, loss_from_omega, pw = make_losses(state, runner, weights, args.penalty_weight, DTYPE)
 
+    # Radians
     gamma_min = yaw_constraints.mins(DTYPE)
     gamma_max = yaw_constraints.maxs(DTYPE)
 
@@ -310,12 +324,15 @@ def main():
     # Optimiser: try L-BFGS with Strong-Wolfe zoom line search
     opt = optax.lbfgs(
         linesearch=optax.scale_by_zoom_linesearch(
-            max_linesearch_steps=10,
-            verbose=False,
-        )
+            max_linesearch_steps=20,
+            verbose=True,
+            curv_rtol=jnp.inf,
+
+        ),
+        scale_init_precond=False
     )
 
-    val_and_grad = jax.value_and_grad(lambda omega: loss_from_omega(omega, gamma_min, gamma_max))
+    val_and_grad = jax.value_and_grad(lambda _omega: loss_from_omega(_omega, gamma_min, gamma_max))
 
     @jax.jit
     def step(omega, opt_state):

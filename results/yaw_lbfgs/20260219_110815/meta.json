@@ -1,0 +1,21 @@
+{
+  "best_power_MW": 5.240730976503783,
+  "final_loss": -5.240730976503783,
+  "final_sep_penalty": 3.5602111778384886,
+  "N_turbines": 3,
+  "timestamp": "2026-02-19 11:08:15",
+  "optimizer": "optax.lbfgs+sw_zoom",
+  "restarts": 2,
+  "maxiter": 100,
+  "patience": 20,
+  "min_delta": 1e-07,
+  "seed": 532,
+  "float64": true,
+  "penalty_weight": 100.0,
+  "gamma_min": 0.0,
+  "gamma_max": 25.0,
+  "diameter": 80.0,
+  "dtype": "float64",
+  "elapsed_time": 18.55938482284546,
+  "init_mode": "lhs"
+}
