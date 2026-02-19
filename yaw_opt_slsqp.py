@@ -12,13 +12,12 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Tuple
 
 import jax
 import jax.numpy as jnp
 import numpy as np
-import optax
 from slsqp_jax import SLSQP
+import optimistix as optx
 
 # DiffWake imports
 from diffwake.diffwake_jax.model import load_input, create_state
@@ -68,6 +67,9 @@ def yaw_penalty_sq(gamma: jax.Array,
     violation_max = jax.nn.softplus(gamma - gamma_max)
 
     return jnp.sum(violation_min + violation_max)
+
+
+
 
 
 def setup_dtype(use_float64: bool = True) -> jnp.dtype:
@@ -141,7 +143,7 @@ def parse_args() -> argparse.Namespace:
 
     # Output
     p.add_argument("--float64", action="store_true", help="Enable float64. Default is float32.")
-    p.add_argument("--out-dir", type=Path, default=Path("results/yaw_lbfgs"), help="Base output directory.")
+    p.add_argument("--out-dir", type=Path, default=Path("results/yaw_slsqp"), help="Base output directory.")
     return p.parse_args()
 
 
@@ -298,45 +300,45 @@ def main():
     ref_yaw = jnp.zeros((1, N), dtype=DTYPE)
 
     # Loss function
-    loss_from_yaw, loss_from_omega, pw = make_losses(state, runner, weights, args.penalty_weight, DTYPE)
+    loss_from_yaw, _, _ = make_losses(state, runner, weights, args.penalty_weight, DTYPE)
 
     gamma_min = yaw_constraints.mins(DTYPE)
     gamma_max = yaw_constraints.maxs(DTYPE)
 
-    # Warmup compilation
-    dummy_yaw = jnp.linspace(gamma_min, gamma_max, N, dtype=DTYPE).reshape(1, -1)
-    dummy_omega = omega_from_gamma_sig(dummy_yaw, gamma_max)
-    _ = loss_from_omega(dummy_omega, gamma_min, gamma_max).block_until_ready()
+    n_ineq = 2 # number of inequality constraints (yaw must be between 0 and 25 degrees)
+    def ineq_constraint(x: jax.Array, args) -> jax.Array:
+        c1 = x[:]  # yaw > 0
+        c2 = jnp.deg2rad(25.0) - x[:]
+        return jnp.array([c1, c2])  # x[0], ..., x[n_ineq-1] >= 0
 
-    # Optimiser: try L-BFGS with Strong-Wolfe zoom line search
-    opt = optax.lbfgs(
-        linesearch=optax.scale_by_zoom_linesearch(
-            max_linesearch_steps=10,
-            verbose=False,
-        )
+    # SLSQP with box constraints
+    solver = SLSQP(
+        max_steps=args.max_iter,
+        atol=1e-10,
+        rtol=1e-10,
+        n_ineq_constraints=2,
+        ineq_constraint_fn=ineq_constraint,
+        lbfgs_memory=10,
     )
 
-    val_and_grad = jax.value_and_grad(lambda omega: loss_from_omega(omega, gamma_min, gamma_max))
-
     @jax.jit
-    def step(omega, opt_state):
-        value, grad = val_and_grad(omega)
-        updates, opt_state = opt.update(
-            grad, opt_state, omega, value=value, grad=grad, value_fn=lambda _omega: loss_from_omega(_omega, gamma_min, gamma_max)
-        )
-        omega = optax.apply_updates(omega, updates)
+    def run_slsqp(yaw_init):
+        # SLSQP box constraints: lb <= x <= ub
+        # We need to replicate gamma_min, gamma_max to match yaw_init shape if they aren't already
+        # yaw_init is (1, N)
+        lb = jnp.full_like(yaw_init, gamma_min)
+        ub = jnp.full_like(yaw_init, gamma_max)
 
-        # Diagnostics
-        gammas = gamma_from_omega_sig(omega, gamma_max)
-        yaw_vio = yaw_penalty_sq(gammas, gamma_min, gamma_max)
-        phys = value - pw * yaw_vio # loss function value
-        g2 = sum([jnp.vdot(g, g) for g in jax.tree_util.tree_leaves(grad)])
-        gnorm = jnp.sqrt(g2)
-        return omega, opt_state, value, gnorm, phys, yaw_vio
+        sol = optx.minimise(
+            fn=loss_from_yaw,
+            solver=solver,
+            y0=yaw_init,
+            options=dict(bounds=(lb, ub))
+        )
+        return sol.value, sol.stats
 
     # Restarts
     key = jax.random.PRNGKey(args.seed)
-
 
     if args.init_mode == "lhs":
         yaw0 = sample_initial_yaw_lhs(key, args.restarts, N, yaw_constraints, DTYPE)
@@ -347,12 +349,10 @@ def main():
         else:
             yaw0 = jnp.empty((0, N, 1), dtype=DTYPE)
 
-
     # Initialise restart loop
     best_power = -jnp.inf
     best_yaw = None
     best_idx = -1
-    best_omega = None
     best_yaw_vio = None
     best_loss = None
 
@@ -364,68 +364,25 @@ def main():
         else:
             yaw_init = yaw0[m - 1][None, :]
 
-        # why is this needed?
-        omega = jax.lax.stop_gradient(omega_from_gamma_sig(yaw_init, gamma_max))
-        opt_state = opt.init(omega)
-
         # Warmup to start @jax.jit on first call
         t0 = time.time()
-        omega, opt_state, v, g, phys, yaw_vio = step(omega, opt_state)
-        jax.block_until_ready(v)
-        print(f"warmup compile+run: {time.time()-t0:.3f}s  "
-              f"loss0={float(v):.6e}, phys0={float(phys):.6e}, yaw_vio0={float(yaw_vio):.6e}, |g|0={float(g):.3e}")
-
-        v_prev = float(v)
-        no_improve = 0
-        last_it = 0
-
-        t0 = time.time()
-
-        for it in range(1, args.max_iter + 1):
-            t1 = time.time()
-            omega, opt_state, v, g, phys, yaw_vio = step(omega, opt_state)
-            jax.block_until_ready(v)
-            last_it = it
-
-            dv = v_prev - float(v)  # positive if improved
-            if dv >= float(args.min_delta):
-                no_improve = 0
-                v_prev = float(v)
-            else:
-                no_improve += 1
-
-            if it % 10 == 0:
-                print(
-                    f"iter {it:04d} loss={float(v):.6e}  "
-                    f"phys={float(phys):.6e}"
-                    f"pw*yaw_vio={float(yaw_vio):.6e}"
-                    f"|g|={float(g):.3} delta_loss={dv:.3e}  "
-                    f"no_improvements={no_improve}  time={time.time()-t1:.3f}s"
-                )
-
-            if no_improve >= args.patience:
-                print(
-                    f"Stopping early at iter {it}"
-                    f"(no improvement >= {args.min_delta} for {args.patience} steps)"
-                )
-                break
-
-        print(f"L-BFGS time (restart {m}): {time.time()-t0:.3f}s  iters={last_it}")
+        best_yaw_m, stats = run_slsqp(yaw_init)
+        jax.block_until_ready(best_yaw_m)
+        v = loss_from_yaw(best_yaw_m)
+        print(f"SLSQP time (restart {m}): {time.time()-t0:.3f}s  "
+              f"iters={stats['num_steps']} final_loss={float(v):.6e}")
 
         # Final evaluation
-        gamma_final = gamma_from_omega_sig(omega, gamma_max)
-        final_loss = loss_from_yaw(gamma_final)
-        jax.block_until_ready(final_loss)
+        final_loss = v
         final_power = -float(final_loss)
         print(f"[restart {m}] final mean power (MW): {final_power:.6f}")
 
         if final_power > best_power:
             best_power = final_power
-            best_yaw = gamma_final
+            best_yaw = best_yaw_m
             best_idx = m
-            best_omega = omega
             best_yaw_vio = float(
-                yaw_penalty_sq(gamma_final, gamma_min, gamma_max)
+                yaw_penalty_sq(best_yaw_m, gamma_min, gamma_max)
             )
             best_loss = float(final_loss)
 
@@ -455,7 +412,7 @@ def main():
 
     # Write optimisation metadata
     config_meta = dict(
-        optimizer="optax.lbfgs+sw_zoom",
+        optimizer="slsqp-jax",
         restarts=int(args.restarts),
         maxiter=int(args.max_iter),
         patience=int(args.patience),
@@ -474,7 +431,7 @@ def main():
     save_run(
         out_dir,
         best_yaw=best_yaw,
-        best_omega=best_omega,
+        best_omega=best_yaw,  # No longer using omega, but save_run expects it. Using best_yaw as placeholder.
         best_power_MW=best_power,
         final_loss=best_loss,
         final_yaw_penalty=(0.0 if best_yaw_vio is None else best_yaw_vio),
