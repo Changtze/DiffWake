@@ -1,6 +1,5 @@
 """
 DiffWake/JAX: deterministic wind turbine yaw angle optimisation with LBFGS (and other optax optimisers)
-
 """
 
 from __future__ import annotations
@@ -12,7 +11,6 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Tuple
 
 import jax
 import jax.numpy as jnp
@@ -37,37 +35,6 @@ class YawConstraints:
         return jnp.deg2rad(jnp.array([self.gamma_max], dtype=dtype))
 
 
-def omega_from_gamma_sig(gamma: jax.Array,
-                          gamma_max: jax.Array,
-                          eps=1e-7) -> jax.Array:
-    """
-    Map points in [gamma_min, gamma_max] to unconstrained omega via sigmoid function
-    :param gamma: JAX array of physical yaw angles in radians
-    :param gamma_max: maximum allowable physical yaw angle in radians
-    :param gamma_min: minimum allowable physical yaw angle in radians
-    """
-    p = gamma / gamma_max
-    p = jnp.clip(p, eps, 1.0 - eps)  # avoid log(0) or log(1)
-
-    return jnp.log(p / (1.0 - p))
-
-
-def gamma_from_omega_sig(omega: jax.Array,
-                         gamma_max: jax.Array,
-                         ) -> jax.Array:
-    return gamma_max * jax.nn.sigmoid(omega)
-
-
-# def yaw_penalty_sq(gamma: jax.Array,
-#                    gamma_min: jax.Array,
-#                    gamma_max: jax.Array,
-#                    ) -> jax.Array:
-#     violation_min = jax.nn.softplus(gamma_min - gamma)
-#     violation_max = jax.nn.softplus(gamma - gamma_max)
-#
-#     return jnp.sum(violation_min + violation_max)
-
-
 def yaw_penalty_sq(gamma: jax.Array,
                       gamma_min: jax.Array,
                       gamma_max: jax.Array) -> jax.Array:
@@ -77,13 +44,12 @@ def yaw_penalty_sq(gamma: jax.Array,
 
     # penalise yaw below gamma_min (should be positive if violated)
     violation_min = (1.0 / beta_1) * jnp.log(1 + jnp.exp(beta_2 * (gamma_min - gamma)))
-    # print(violation_min)
 
     # penalise yaw above gamma_max (should be positive if violated)
     violation_max = (1.0 / alpha_1) * jnp.log(1 + jnp.exp(alpha_2 * (gamma_max - gamma)))
-    # print(violation_max)
 
     return jnp.sum(violation_max + violation_min)
+
 
 def setup_dtype(use_float64: bool = True) -> jnp.dtype:
     jax.config.update("jax_enable_x64", use_float64)
@@ -111,13 +77,7 @@ def sample_initial_yaw_lhs(key,
                        dtype) -> jax.Array:
     """
     (M, N, 2) Latin hypercube samples
-    :param key: JAX PRNG key
-    :param M: number of samples
-    :param N: number of turbines
-    :param constraints: yaw angle constraints
-    :param dtype: custom dtype (JAX defaults to jax.float32)
     """
-
     U = _latin_hypercube_unit(key, M, 1 * N, dtype)
     U = U.reshape(M, N, 1)
     mins = constraints.mins(dtype)
@@ -152,7 +112,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-iter", type=int, default=200, help="Maximum number of optimiser iterations.")
     p.add_argument("--patience", type=int, default=10, help="Early stop if loss change is less than min_delta for this many steps")
     p.add_argument("--seed", type=int, default=0, help="Random seed.")
-    p.add_argument("--min-delta", type=float, default=1e-7, help="Minimum change in loss to continue optimisation.")
+    p.add_argument("--min-delta", type=float, default=1e-6, help="Minimum change in loss to continue optimisation.")
 
     # Output
     p.add_argument("--float64", action="store_true", help="Enable float64. Default is float32.")
@@ -169,16 +129,6 @@ def build_state_runner(
         turb_intensity: jax.Array,
         dtype,
 ):
-    """
-    :param data_dir: parent directory of turbine, farm and weather data
-    :param farm_yaml: YAML file for farm layout
-    :param turbine_yaml: YAML file for turbine characteristics
-    :param wind_dir_rad: JAX array of wind directions in radians
-    :param wind_speed: JAX array of wind speeds in m/s
-    :param turb_intensity: JAX array of turbulence intensity values
-    :param dtype: custom dtype (JAX defaults to jax.float32)
-    :return:
-    """
     cfg = load_input(
         str(data_dir / farm_yaml),
         str(data_dir / turbine_yaml),
@@ -190,7 +140,6 @@ def build_state_runner(
     state = create_state(cfg)
     runner = make_yaw_runner(state)
 
-    # N from config
     x0 = jnp.asarray(cfg.layout["layout_x"], dtype=dtype)
     N = int(x0.shape[0])
 
@@ -218,23 +167,12 @@ def make_losses(state,
         case_power = jnp.sum(pow_mw, axis=1)
         return -jnp.sum(case_power * weights) / 1e6  # scalar in MW
 
-    def loss_from_omega(omega: jax.Array,
-                        gamma_min: jax.Array,
-                        gamma_max: jax.Array) -> jax.Array:
-        gammas = gamma_from_omega_sig(omega, gamma_max)
-        phys = loss_from_yaw(gammas)
-        yaw = yaw_penalty_sq(gammas, gamma_min, gamma_max)
-        # Power is in MW (~1-100), yaw penalty is in rad^2 (~0-1)
-        # We need to scale penalty_weight accordingly.
-        return phys + pw * yaw
-
-    return loss_from_yaw, loss_from_omega, pw
+    return loss_from_yaw, pw
 
 # Save helpers
 def save_run(out_dir: Path,
              *,
              best_yaw: jax.Array,
-             best_omega: jax.Array,
              best_power_MW: float,
              final_loss: float,
              final_yaw_penalty: float,
@@ -248,7 +186,6 @@ def save_run(out_dir: Path,
     np.savez(
         out_dir / "arrays.npz",
         best_yaw=np.asarray(best_yaw),
-        best_omega=np.asarray(best_omega),
         per_case_power_MW=np.asarray(per_case_power_MW),
         wind_dir_deg=wind_dir_deg,
         wind_speed=wind_speed,
@@ -282,7 +219,6 @@ def main():
     args = parse_args()
     DTYPE = setup_dtype(args.float64)
 
-    # define yaw misalignment angle constraint (automatically converted to radians)
     yaw_constraints = YawConstraints(args.gamma_min, args.gamma_max)
     diameter = float(args.diameter)
 
@@ -307,10 +243,10 @@ def main():
     )
 
     # Reference yaw layout (bounded, non-zero yaw to initialise)
-    ref_yaw = jnp.ones((1, N), dtype=DTYPE) * 0.2  # avoid 0 yaw
+    ref_yaw = jnp.ones((1, N), dtype=DTYPE) * 0.1 # avoid 0 yaw
 
     # Loss function
-    loss_from_yaw, loss_from_omega, pw = make_losses(state, runner, weights, args.penalty_weight, DTYPE)
+    loss_from_yaw, pw = make_losses(state, runner, weights, args.penalty_weight, DTYPE)
 
     # Radians
     gamma_min = yaw_constraints.mins(DTYPE)
@@ -318,8 +254,7 @@ def main():
 
     # Warmup compilation
     dummy_yaw = jnp.linspace(gamma_min, gamma_max, N, dtype=DTYPE).reshape(1, -1)
-    dummy_omega = omega_from_gamma_sig(dummy_yaw, gamma_max)
-    _ = loss_from_omega(dummy_omega, gamma_min, gamma_max).block_until_ready()
+    _ = loss_from_yaw(dummy_yaw).block_until_ready()
 
     # Optimiser: try L-BFGS with Strong-Wolfe zoom line search
     opt = optax.lbfgs(
@@ -327,32 +262,33 @@ def main():
             max_linesearch_steps=20,
             verbose=True,
             curv_rtol=jnp.inf,
-
         ),
+        memory_size=20,
         scale_init_precond=False
     )
 
-    val_and_grad = jax.value_and_grad(lambda _omega: loss_from_omega(_omega, gamma_min, gamma_max))
+    val_and_grad = jax.value_and_grad(loss_from_yaw)
 
     @jax.jit
-    def step(omega, opt_state):
-        value, grad = val_and_grad(omega)
+    def step(gamma, opt_state):
+        value, grad = val_and_grad(gamma)
         updates, opt_state = opt.update(
-            grad, opt_state, omega, value=value, grad=grad, value_fn=lambda _omega: loss_from_omega(_omega, gamma_min, gamma_max)
+            grad, opt_state, gamma, value=value, grad=grad, value_fn=loss_from_yaw
         )
-        omega = optax.apply_updates(omega, updates)
+        gamma = optax.apply_updates(gamma, updates)
 
-        # Diagnostics
-        gammas = gamma_from_omega_sig(omega, gamma_max)
-        yaw_vio = yaw_penalty_sq(gammas, gamma_min, gamma_max)
-        phys = value - pw * yaw_vio # loss function value
+        # Strict box-constraint projection directly on the physical yaw angles
+        gamma = optax.projections.projection_box(gamma, gamma_min, gamma_max)
+
+        # Diagnostics (Yaw violation should be zero or negligible now due to projection)
+        yaw_vio = yaw_penalty_sq(gamma, gamma_min, gamma_max)
+        phys = value
         g2 = sum([jnp.vdot(g, g) for g in jax.tree_util.tree_leaves(grad)])
         gnorm = jnp.sqrt(g2)
-        return omega, opt_state, value, gnorm, phys, yaw_vio
+        return gamma, opt_state, value, gnorm, phys, yaw_vio
 
     # Restarts
     key = jax.random.PRNGKey(args.seed)
-
 
     if args.init_mode == "lhs":
         yaw0 = sample_initial_yaw_lhs(key, args.restarts, N, yaw_constraints, DTYPE)
@@ -363,12 +299,10 @@ def main():
         else:
             yaw0 = jnp.empty((0, N, 1), dtype=DTYPE)
 
-
     # Initialise restart loop
     best_power = -jnp.inf
     best_yaw = None
     best_idx = -1
-    best_omega = None
     best_yaw_vio = None
     best_loss = None
 
@@ -380,13 +314,13 @@ def main():
         else:
             yaw_init = yaw0[m - 1][None, :]
 
-        # why is this needed?
-        omega = jax.lax.stop_gradient(omega_from_gamma_sig(yaw_init, gamma_max))
-        opt_state = opt.init(omega)
+        # Initialise directly with physical gamma angles
+        gamma = yaw_init
+        opt_state = opt.init(gamma)
 
         # Warmup to start @jax.jit on first call
         t0 = time.time()
-        omega, opt_state, v, g, phys, yaw_vio = step(omega, opt_state)
+        gamma, opt_state, v, g, phys, yaw_vio = step(gamma, opt_state)
         jax.block_until_ready(v)
         print(f"warmup compile+run: {time.time()-t0:.3f}s  "
               f"loss0={float(v):.6e}, phys0={float(phys):.6e}, yaw_vio0={float(yaw_vio):.6e}, |g|0={float(g):.3e}")
@@ -399,7 +333,7 @@ def main():
 
         for it in range(1, args.max_iter + 1):
             t1 = time.time()
-            omega, opt_state, v, g, phys, yaw_vio = step(omega, opt_state)
+            gamma, opt_state, v, g, phys, yaw_vio = step(gamma, opt_state)
             jax.block_until_ready(v)
             last_it = it
 
@@ -428,20 +362,18 @@ def main():
 
         print(f"L-BFGS time (restart {m}): {time.time()-t0:.3f}s  iters={last_it}")
 
-        # Final evaluation
-        gamma_final = gamma_from_omega_sig(omega, gamma_max)
-        final_loss = loss_from_yaw(gamma_final)
+        # Final evaluation directly uses gamma
+        final_loss = loss_from_yaw(gamma)
         jax.block_until_ready(final_loss)
         final_power = -float(final_loss)
         print(f"[restart {m}] final mean power (MW): {final_power:.6f}")
 
         if final_power > best_power:
             best_power = final_power
-            best_yaw = gamma_final
+            best_yaw = gamma
             best_idx = m
-            best_omega = omega
             best_yaw_vio = float(
-                yaw_penalty_sq(gamma_final, gamma_min, gamma_max)
+                yaw_penalty_sq(gamma, gamma_min, gamma_max)
             )
             best_loss = float(final_loss)
 
@@ -471,7 +403,7 @@ def main():
 
     # Write optimisation metadata
     config_meta = dict(
-        optimizer="optax.lbfgs+sw_zoom",
+        optimizer="optax.lbfgs+sw_zoom+projection_box",
         restarts=int(args.restarts),
         maxiter=int(args.max_iter),
         patience=int(args.patience),
@@ -490,7 +422,6 @@ def main():
     save_run(
         out_dir,
         best_yaw=best_yaw,
-        best_omega=best_omega,
         best_power_MW=best_power,
         final_loss=best_loss,
         final_yaw_penalty=(0.0 if best_yaw_vio is None else best_yaw_vio),
@@ -503,25 +434,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

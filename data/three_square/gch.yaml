@@ -61,8 +61,8 @@ farm:
 
   # See turbine library documentation for more info
   turbine_type:
-    - nrel_5MW
-  # - !include vestas_v802MW.yaml
+    #- nrel_5MW
+    - !include vestas_v802MW.yaml
 
 ###
 # Flags for atmospheric conditions
@@ -74,12 +74,12 @@ flow_field:
   reference_wind_height: -1
 
   turbulence_intensities:
-    - 0.09
+    - 0.06
   wind_directions:
     - 270.0
   wind_shear: 0.12
   wind_speeds:
-    - 9.7
+    - 13.5
 
   wind_veer: 0.0
 
