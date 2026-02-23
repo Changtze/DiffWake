@@ -14,6 +14,8 @@ from pathlib import Path
 import equinox
 
 import jax
+jax.config.update("jax_debug_nans", True)
+jax.config.update("jax_disable_jit", True)
 import jax.numpy as jnp
 import numpy as np
 from slsqp_jax import SLSQP
@@ -159,7 +161,26 @@ def make_losses(state,
         case_power = jnp.sum(pow_mw, axis=1)
         return -jnp.sum(case_power * weights) / 1e6  # scalar in MW
 
-    return loss_from_yaw, pw
+    def grad_from_yaw(yaw_angles_flat: jnp.ndarray, args):
+        """Calculate the gradient and print the diagnostics."""
+        # 1. Calculate the objective and gradient together
+        loss, g = jax.value_and_grad(loss_from_yaw)(yaw_angles_flat, args)
+
+        # 2. Print the current state at runtime
+        jax.debug.print(
+            "| Loss: {loss:.8f} | Max Grad: {max_g:.8f} | NaN in Grad? {is_nan}",
+            loss=loss,
+            max_g=jnp.max(jnp.abs(g)),
+            is_nan=jnp.any(jnp.isnan(g))
+        )
+
+        # 3. Print the raw yaw angles (in degrees) and gradients
+        jax.debug.print("Yaw (deg): {yaw}", yaw=jnp.rad2deg(yaw_angles_flat))
+        jax.debug.print("Gradients: {g}\n", g=g)
+
+        return g
+
+    return loss_from_yaw, grad_from_yaw, pw
 
 
 def save_run(out_dir: Path,
@@ -235,8 +256,9 @@ def main():
     )
 
     # Non-zero arbitrary starting yaw
-    ref_yaw = jnp.full((1, N), jnp.deg2rad(0.1), dtype=DTYPE)
-    loss_from_yaw, pw = make_losses(state, runner, weights, args.penalty_weight, DTYPE)
+    ref_yaw = jnp.full((1, N), 0.1, dtype=DTYPE)
+
+    loss_from_yaw, grad_from_yaw, pw = make_losses(state, runner, weights, args.penalty_weight, DTYPE)
 
     # Min and max yaw in radians
     gamma_min = yaw_constraints.mins(DTYPE)
@@ -246,21 +268,24 @@ def main():
     num_constraints = 2
     n_ineq = num_constraints * N
 
-    def ineq_constraint(x: jax.Array, args) -> jax.Array:
-        # x is natively (N,) because we pass a flattened initial guess
-        c1 = x - gamma_min[0]
-        c2 = gamma_max[0] - x
-        return jnp.concatenate([c1, c2])
+    # def ineq_constraint(x: jax.Array, args) -> jax.Array:
+    #     # x is natively (N,) because we pass a flattened initial guess
+    #     c1 = x - gamma_min[0]
+    #     c2 = gamma_max[0] - x
+    #     return jnp.concatenate([c1, c2])
+    bounds = jnp.tile(jnp.array([0.0, gamma_max[0]]), (N, 1))
 
     solver = SLSQP(
         max_steps=args.max_iter,
         atol=args.min_delta,
         rtol=1e-3,
-        n_ineq_constraints=n_ineq,
-        ineq_constraint_fn=ineq_constraint,
-        lbfgs_memory=20,
-    )
+        bounds=bounds,
+        obj_grad_fn=grad_from_yaw,
+        # n_ineq_constraints=n_ineq,
+        # ineq_constraint_fn=ineq_constraint,
+        lbfgs_memory=10,
 
+    )
     @equinox.filter_jit
     def run_slsqp(yaw_init):
         # Flatten to ensure 1D shape (N,) passes cleanly through the solver
@@ -273,6 +298,7 @@ def main():
             fn=loss_from_yaw,
             solver=solver,
             y0=yaw_init_flat,
+            throw=False,
             # options=dict(bounds=(lb, ub))
         )
         # Reshape output back to (1, N) for the rest of your logging/eval code

@@ -1,16 +1,7 @@
 import jax.numpy as jnp
 from flax import struct
 from typing import Tuple
-
-
-def cosd(angle):
-    return jnp.cos(jnp.radians(angle))
-
-def sind(angle):
-    return jnp.sin(jnp.radians(angle))
-
-def tand(angle):
-    return jnp.tan(jnp.radians(angle))
+import jax.debug
 
 def gaussian_function(C, r, n, sigma):
     return C * jnp.exp(-1 * r ** n / (2 * sigma ** 2))
@@ -23,12 +14,17 @@ def rC(wind_veer, sigma_y, sigma_z, y, y_i, delta, z, HH, Ct, yaw, D):
     c = jnp.sin(wind_veer) ** 2 / (2 * sigma_y ** 2) + jnp.cos(wind_veer) ** 2 / (2 * sigma_z ** 2)
     
     r = a * ((y - y_i - delta) ** 2) - 2 * b * (y - y_i - delta) * (z - HH) + c * ((z - HH) ** 2)
-    d = jnp.clip(1 - (Ct * cosd(yaw) / ( 8.0 * sigma_y * sigma_z / (D * D) )), 0.0, 1.0)
+
+    denom = 8.0 * sigma_y * sigma_z / (D * D)
+    safe_denom = jnp.where(denom < 1e-6, 1e-6, denom)
+    d_temp = 1 - (Ct * jnp.cos(yaw) / safe_denom)
+    d = jnp.clip(d_temp, 1e-12, 1.0)
+
     C = 1 - jnp.sqrt(d)
     return r, C
 
 
-def safe_sqrt(x: jnp.ndarray, eps: float = 1e-9) -> jnp.ndarray:
+def safe_sqrt(x: jnp.ndarray, eps: float = 1e-8) -> jnp.ndarray:
     """Numerically safe sqrt (same logic as PyTorch clamp-then-sqrt)."""
     return jnp.sqrt(jnp.clip(x, min=eps))
 
@@ -77,7 +73,7 @@ class GaussVelocityDeficit:
 
         # Initial lateral bounds
         sigma_z0 = rotor_diameter_i * 0.5 * jnp.sqrt(uR / (u_initial + u0))
-        sigma_y0 = sigma_z0 * cosd(yaw_angle) * cosd(wind_veer)
+        sigma_y0 = sigma_z0 * jnp.cos(yaw_angle) * jnp.cos(wind_veer)
 
         # Compute the bounds of the near and far wake regions and a mask
 
@@ -86,7 +82,7 @@ class GaussVelocityDeficit:
 
         # Start of the far wake
         x0 = jnp.ones_like(u_initial)
-        x0 *= rotor_diameter_i * cosd(yaw_angle) * (1 + jnp.sqrt(1 - ct_i) )
+        x0 *= rotor_diameter_i * jnp.cos(yaw_angle) * (1 + jnp.sqrt(1 - ct_i) )
         x0 /= jnp.sqrt(2) * (
             4 * self.alpha * turbulence_intensity_i + 2 * self.beta * (1 - jnp.sqrt(1 - ct_i) )
         )

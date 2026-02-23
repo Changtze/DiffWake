@@ -263,7 +263,7 @@ def main():
             verbose=True,
             curv_rtol=jnp.inf,
         ),
-        memory_size=20,
+        memory_size=5,
         scale_init_precond=False
     )
 
