@@ -15,7 +15,7 @@ import equinox
 
 import jax
 jax.config.update("jax_debug_nans", True)
-jax.config.update("jax_disable_jit", True)
+jax.config.update("jax_disable_jit", False)
 import jax.numpy as jnp
 import numpy as np
 from slsqp_jax import SLSQP

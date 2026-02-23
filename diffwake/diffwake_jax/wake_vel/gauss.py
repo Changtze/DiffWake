@@ -16,8 +16,10 @@ def rC(wind_veer, sigma_y, sigma_z, y, y_i, delta, z, HH, Ct, yaw, D):
     r = a * ((y - y_i - delta) ** 2) - 2 * b * (y - y_i - delta) * (z - HH) + c * ((z - HH) ** 2)
 
     denom = 8.0 * sigma_y * sigma_z / (D * D)
+    # jax.debug.print("denom: {denom}", denom=denom)
     safe_denom = jnp.where(denom < 1e-6, 1e-6, denom)
-    d_temp = 1 - (Ct * jnp.cos(yaw) / safe_denom)
+    d_temp = 1.0 - (Ct * jnp.cos(yaw) / safe_denom)
+    # jax.debug.print("d_temp: {d_temp}", d_temp=d_temp)
     d = jnp.clip(d_temp, 1e-12, 1.0)
 
     C = 1 - jnp.sqrt(d)
