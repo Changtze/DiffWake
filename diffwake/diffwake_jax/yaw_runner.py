@@ -42,7 +42,7 @@ def make_yaw_runner(state: State):
 
     if velocity_model_name == "cc":
         def _loop_with_yaw(yaw_angles_sorted: jnp.ndarray):
-            def body(ii, st):
+            def body(st, ii):
                 ii32 = lax.convert_element_type(ii, jnp.int32)
                 st_next, _ = cc_solver_step(
                     st, ii32, params,
@@ -55,8 +55,11 @@ def make_yaw_runner(state: State):
                     enable_yaw_added_recovery=enable_yaw_added_recovery,
                 )
                 return st_next
+
             # fori_loop since we only need the final state
-            final_state = lax.fori_loop(0, T, body, init)
+            # final_state = lax.fori_loop(0, T, body, init)
+
+            final_state, _ = lax.scan(body, init, jnp.arange(T))
             return to_result(final_state)
 
     elif velocity_model_name == "turbopark":
@@ -69,7 +72,7 @@ def make_yaw_runner(state: State):
 
     else:
         def _loop_with_yaw(yaw_angles_sorted: jnp.ndarray):
-            def body(ii, st):
+            def body(st, ii):
                 ii32 = lax.convert_element_type(ii, jnp.int32)
                 st_next, _ = sequential_solve_step(
                     st, ii32, params,
@@ -82,10 +85,13 @@ def make_yaw_runner(state: State):
                     enable_yaw_added_recovery=enable_yaw_added_recovery,
                     enable_transverse_velocities=enable_transverse_velocities
                 )
-                return st_next
+                return st_next, None
 
             # fori_loop since we only need the final state
-            final_state = lax.fori_loop(0, T, body, init)
+            # final_state = lax.fori_loop(0, T, body, init)
+
+            # Scan loop
+            final_state, _ = lax.scan(body, init, jnp.arange(T))
             return to_result(final_state)
 
     # Single compiled function taking only yaw

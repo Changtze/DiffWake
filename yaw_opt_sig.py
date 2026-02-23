@@ -112,7 +112,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-iter", type=int, default=200, help="Maximum number of optimiser iterations.")
     p.add_argument("--patience", type=int, default=10, help="Early stop if loss change is less than min_delta for this many steps")
     p.add_argument("--seed", type=int, default=0, help="Random seed.")
-    p.add_argument("--min-delta", type=float, default=1e-6, help="Minimum change in loss to continue optimisation.")
+    p.add_argument("--min-delta", type=float, default=1e-5, help="Minimum change in loss to continue optimisation.")
 
     # Output
     p.add_argument("--float64", action="store_true", help="Enable float64. Default is float32.")

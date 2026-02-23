@@ -103,7 +103,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-iter", type=int, default=200, help="Maximum number of optimiser iterations.")
     p.add_argument("--patience", type=int, default=10, help="Early stop if loss change is less than min_delta")
     p.add_argument("--seed", type=int, default=0, help="Random seed.")
-    p.add_argument("--min-delta", type=float, default=1e-6, help="Minimum change in loss to continue optimisation.")
+    p.add_argument("--min-delta", type=float, default=1e-4, help="Minimum change in loss to continue optimisation.")
 
     p.add_argument("--float64", action="store_true", help="Enable float64. Default is float32.")
     p.add_argument("--out-dir", type=Path, default=Path("results/yaw_slsqp"), help="Base output directory.")
@@ -304,7 +304,6 @@ def main():
             yaw_init = yaw0[m - 1][None, :]
 
         t0 = time.time()
-        print(f"Yaw angles: {jnp.rad2deg(yaw_init)}")
         best_yaw_m, stats = run_slsqp(yaw_init)
 
 
