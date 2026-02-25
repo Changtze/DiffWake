@@ -1,4 +1,3 @@
-import torch
 from ..interp1d import interp1d
 POWER_SETPOINT_DEFAULT = 1e12
 
@@ -30,8 +29,6 @@ def rotor_velocity_air_density_correction(
     """
     scale = (air_density / ref_air_density) ** (1.0 / 3.0)
     return scale * velocities
-
-
 
 
 

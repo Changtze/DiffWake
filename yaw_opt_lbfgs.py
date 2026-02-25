@@ -259,11 +259,11 @@ def main():
     # Optimiser: try L-BFGS with Strong-Wolfe zoom line search
     opt = optax.lbfgs(
         linesearch=optax.scale_by_zoom_linesearch(
-            max_linesearch_steps=20,
-            verbose=True,
+            max_linesearch_steps=10,
+            verbose=False,
             curv_rtol=jnp.inf,
         ),
-        memory_size=5,
+        memory_size=10,
         scale_init_precond=False
     )
 
@@ -272,6 +272,7 @@ def main():
     @jax.jit
     def step(gamma, opt_state):
         value, grad = val_and_grad(gamma)
+        grad = jnp.nan_to_num(grad, nan=1e-6, posinf=1e-1, neginf=-1e-1)
         updates, opt_state = opt.update(
             grad, opt_state, gamma, value=value, grad=grad, value_fn=loss_from_yaw
         )

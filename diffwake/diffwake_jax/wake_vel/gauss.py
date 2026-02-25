@@ -2,27 +2,30 @@ import jax.numpy as jnp
 from flax import struct
 from typing import Tuple
 import jax.debug
+from jax import jit
+
 
 def gaussian_function(C, r, n, sigma):
     return C * jnp.exp(-1 * r ** n / (2 * sigma ** 2))
 
+
 def rC(wind_veer, sigma_y, sigma_z, y, y_i, delta, z, HH, Ct, yaw, D):
+
     wind_veer = jnp.radians(wind_veer)
-    
+
     a = jnp.cos(wind_veer) ** 2 / (2 * sigma_y ** 2) + jnp.sin(wind_veer) ** 2 / (2 * sigma_z ** 2)
     b = -jnp.sin(2 * wind_veer) / (4 * sigma_y ** 2) + jnp.sin(2 * wind_veer) / (4 * sigma_z ** 2)
     c = jnp.sin(wind_veer) ** 2 / (2 * sigma_y ** 2) + jnp.cos(wind_veer) ** 2 / (2 * sigma_z ** 2)
-    
+
+
     r = a * ((y - y_i - delta) ** 2) - 2 * b * (y - y_i - delta) * (z - HH) + c * ((z - HH) ** 2)
 
     denom = 8.0 * sigma_y * sigma_z / (D * D)
-    # jax.debug.print("denom: {denom}", denom=denom)
     safe_denom = jnp.where(denom < 1e-6, 1e-6, denom)
-    d_temp = 1.0 - (Ct * jnp.cos(yaw) / safe_denom)
-    # jax.debug.print("d_temp: {d_temp}", d_temp=d_temp)
+    d_temp = 1 - (Ct * jnp.cos(yaw) / safe_denom)
     d = jnp.clip(d_temp, 1e-12, 1.0)
-
     C = 1 - jnp.sqrt(d)
+
     return r, C
 
 
@@ -68,6 +71,7 @@ class GaussVelocityDeficit:
 
         # Opposite sign convention in this model
         yaw_angle = -1 * yaw_angle_i
+        ct_i = jnp.clip(ct_i, 1e-6, 0.99999)
 
         # Initialize the velocity deficit
         uR = u_initial * ct_i / (2.0 * (1 - jnp.sqrt(1 - ct_i)))
@@ -106,6 +110,7 @@ class GaussVelocityDeficit:
         # NEAR WAKE region
         near_wake_ramp_up = (x - xR) / jnp.where(jnp.abs(x0 - xR) > 1e-6, x0 - xR, 1e-6)
         near_wake_ramp_down = (x0 - x) / jnp.where(jnp.abs(x0 - xR) > 1e-6, x0 - xR, 1e-6)
+
 
         sigma_y_near = near_wake_ramp_down * 0.501 * rotor_diameter_i * jnp.sqrt(ct_i / 2.0)
         sigma_y_near += near_wake_ramp_up * sigma_y0
@@ -154,6 +159,7 @@ class GaussVelocityDeficit:
             yaw_angle,
             rotor_diameter_i,
         )
+
 
         far_wake_deficit = gaussian_function(C_far, r_far, 1, jnp.sqrt(0.5))
         far_wake_deficit *= far_wake_mask

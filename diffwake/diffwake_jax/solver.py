@@ -171,6 +171,8 @@ def sequential_solve_step(
         )
         gch_gain = 2.0
         updated = (ti_i + gch_gain * I_mixing).astype(ti.dtype)
+        # Sanitization for gradient safety
+        updated = jnp.nan_to_num(updated, nan=0.0, posinf=0.0, neginf=0.0)
 
         ti = lax.dynamic_update_slice_in_dim(ti, updated, ii, axis=1)
         # Update ti_i for use in velocity_model

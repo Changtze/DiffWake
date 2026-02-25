@@ -20,12 +20,12 @@ class GaussVelocityDeflection:
         turb_I_i: jnp.ndarray,
         ct_i: jnp.ndarray,
         D: jnp.ndarray,
-        x: jnp.ndarray, 
+        x: jnp.ndarray,
         U_free: jnp.ndarray,
         wind_veer: float
     ) -> jnp.ndarray:
 
-        dtype = x.dtype                   
+        dtype = x.dtype
         ad     = jnp.asarray(self.ad,   dtype)
         bd     = jnp.asarray(self.bd,   dtype)
         sqrt2  = jnp.asarray(self._sqrt2, dtype)
@@ -39,6 +39,7 @@ class GaussVelocityDeflection:
         yaw   = -yaw_i
         cos_y = jnp.cos(yaw)
         one   = jnp.ones_like(cos_y)
+
 
         uR = U_free * ct_i * cos_y / (2. * (one - jnp.sqrt(one - ct_i * cos_y)))
         u0 = U_free * jnp.sqrt(one - ct_i)
@@ -114,7 +115,7 @@ def calculate_transverse_velocity(
     z: jnp.ndarray,                  # (B,1,Ny,Nz)
     rotor_diameter: float,
     hub_height: float,
-    yaw: jnp.ndarray,                # (B,1,1,1) 
+    yaw: jnp.ndarray,                # (B,1,1,1)
     ct_i: jnp.ndarray,               # (B,1,1,1)
     tsr_i: jnp.ndarray,              # (B,1,1,1)
     axial_induction_i: jnp.ndarray,  # (B,1,1,1)
@@ -225,7 +226,7 @@ def wake_added_yaw(
     mean_cubed = jnp.mean(u_i**3, axis=(2, 3), keepdims=True)
 
     turbine_average_velocity = (
-        jnp.sign(mean_cubed) * jnp.abs(mean_cubed) ** (1/3)   
+        jnp.sign(mean_cubed) * jnp.abs(mean_cubed) ** (1/3)
     )
 
     Gamma_wake_rotation = 0.25 * 2 * jnp.pi * D * (aI - aI**2) * turbine_average_velocity / TSR
@@ -242,7 +243,7 @@ def wake_added_yaw(
     v_core = jnp.mean(vortex_velocity(Gamma_wake_rotation, HH), axis=(2, 3))
 
     val = 2.0 * (avg_v - v_core) / (v_top + v_bottom)
-    val = jnp.clip(val, -1.0, 1.0)
+    val = jnp.clip(val, -0.99999, 0.99999)
     y = 0.5 * jnp.arcsin(val)
 
     return y[:, :, None, None]

@@ -17,6 +17,7 @@ import jax
 jax.config.update("jax_debug_nans", True)
 jax.config.update("jax_disable_jit", False)
 import jax.numpy as jnp
+
 import numpy as np
 from slsqp_jax import SLSQP
 import optimistix as optx
@@ -159,24 +160,29 @@ def make_losses(state,
             yaw_angles=yaw_angles
         )
         case_power = jnp.sum(pow_mw, axis=1)
-        return -jnp.sum(case_power * weights) / 1e6  # scalar in MW
+        return -jnp.sum(case_power * weights) / 1e6  # convert to megawatts
 
+    @jax.jit
     def grad_from_yaw(yaw_angles_flat: jnp.ndarray, args):
         """Calculate the gradient and print the diagnostics."""
         # 1. Calculate the objective and gradient together
+
         loss, g = jax.value_and_grad(loss_from_yaw)(yaw_angles_flat, args)
 
-        # 2. Print the current state at runtime
-        jax.debug.print(
-            "| Loss: {loss:.8f} | Max Grad: {max_g:.8f} | NaN in Grad? {is_nan}",
-            loss=loss,
-            max_g=jnp.max(jnp.abs(g)),
-            is_nan=jnp.any(jnp.isnan(g))
-        )
+        # Sanitization of gradient
+        g = jnp.nan_to_num(g, nan=1e-6, posinf=1e-1, neginf=-1e-1)
 
-        # 3. Print the raw yaw angles (in degrees) and gradients
-        jax.debug.print("Yaw (deg): {yaw}", yaw=jnp.rad2deg(yaw_angles_flat))
-        jax.debug.print("Gradients: {g}\n", g=g)
+        # 2. Print the current state at runtime
+        # jax.debug.print(
+        #     "| Loss: {loss:.8f} | Max Grad: {max_g:.8f} | NaN in Grad? {is_nan}",
+        #     loss=loss,
+        #     max_g=jnp.max(jnp.abs(g)),
+        #     is_nan=jnp.any(jnp.isnan(g))
+        # )
+        #
+        # # 3. Print the raw yaw angles (in degrees) and gradients
+        # jax.debug.print("Yaw (deg): {yaw}", yaw=jnp.rad2deg(yaw_angles_flat))
+        # jax.debug.print("Gradients: {g}\n", g=g)
 
         return g
 
@@ -256,9 +262,10 @@ def main():
     )
 
     # Non-zero arbitrary starting yaw
-    ref_yaw = jnp.full((1, N), 0.1, dtype=DTYPE)
+    ref_yaw = jnp.full((1, N), 0.05, dtype=DTYPE)
 
     loss_from_yaw, grad_from_yaw, pw = make_losses(state, runner, weights, args.penalty_weight, DTYPE)
+
 
     # Min and max yaw in radians
     gamma_min = yaw_constraints.mins(DTYPE)
@@ -278,7 +285,7 @@ def main():
     solver = SLSQP(
         max_steps=args.max_iter,
         atol=args.min_delta,
-        rtol=1e-3,
+        rtol=1e-6,
         bounds=bounds,
         obj_grad_fn=grad_from_yaw,
         # n_ineq_constraints=n_ineq,
