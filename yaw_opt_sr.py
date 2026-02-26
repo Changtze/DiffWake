@@ -9,6 +9,7 @@ import json
 import os
 import time
 from dataclasses import dataclass
+from typing import Callable
 from datetime import datetime
 from pathlib import Path
 import equinox
@@ -183,10 +184,25 @@ def main():
     step_size = jnp.abs(0.5 * (args.gamma_max - args.gamma_min) / (args.Nyaw - 1))
     refine_yaw = jnp.linspace(-step_size, step_size, args.Nyaw_refine, dtype=DTYPE).reshape(1, -1)
 
-    # Remove zeros from refine step to avoid the same angle
+    # Remove zeros from refine-pass to avoid duplicate angles
     mask = (refine_yaw != 0)
     refine_yaw_filtered = refine_yaw[mask]
 
+    def sr_opt(state,
+               runner,
+               initial_yaws: jax.Array,
+                farm_power_fn: Callable) -> jax.Array:
+        def test_single_angle(yaw_angles: jax.Array,
+                              turb_idx,
+                              candidates):
+
+        def combined_pass():
+            """
+            Do a coarse pass to roughly find the optimal yaw angle.
+            Follow with a refine pass to improve the previous candidate.
+            """
+
+        return best_yaws
 
 
 
