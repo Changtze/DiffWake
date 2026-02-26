@@ -42,7 +42,7 @@ def parse_args() -> argparse.Namespace:
                    help="Weather data file (relative to --data-dir).")
 
     p.add_argument("--Nyaw", type=int, default=5, help="Number of first yaw angles to consider (serial run)")
-    p.add_argument("--Nyaw-refine", type=int, default=5, help="Number of refined yaw angles to consider (refine run)")
+    p.add_argument("--Nyaw-refine", type=int, default=4, help="Number of refined yaw angles to consider (refine run)")
     p.add_argument("--gamma-max", type=float, default=30.0, help="Maximum allowable yaw angle in degrees")
     p.add_argument("--gamma-min", type=float, default=-30.0, help="Maximum allowable yaw angle in degrees")
 
@@ -137,6 +137,17 @@ def main():
     args = parse_args()
     DTYPE = setup_dtype(args.float64)
 
+    Nys, Nyr = args.Nyaw, args.Nyaw_refine  #
+    if not isinstance(Nys, int) or not isinstance(Nyr, int):
+        raise ValueError("Nyaw and Nyaw_refine must be integers.")
+    if Nyr < 2:
+        raise ValueError("Nyaw_refine must be at least 2.")
+    if (Nys > 0) & ((Nyr + 1) % 2 == 0):
+        raise ValueError(
+            "Nyaw-refine must be an even number. "
+            "This is to ensure the same yaw angles are not evaluated twice between passes."
+        )
+
     data_dir = args.data_dir
     npz_path = data_dir / args.weather_npz
     if not npz_path.is_file():
@@ -162,6 +173,21 @@ def main():
     zero_yaw = jnp.zeros((1, N), 0.0, dtype=DTYPE)
     baseline_power = power_from_yaw(state, runner, zero_yaw, DTYPE)
 
-    # Sort turbines in order from upstream to downstream.
-    # Does DiffWake allow this?
     # Start Serial-Refine algorithm
+    best_power = baseline_power  # Initialise optimal power variable
+
+    # TO-DO: refine for each wind case
+
+    # Get serial
+    serial_yaw = jnp.linspace(args.gamma_min, args.gamma_max, args.Nyaw, dtype=DTYPE).reshape(1, -1)
+    step_size = jnp.abs(0.5 * (args.gamma_max - args.gamma_min) / (args.Nyaw - 1))
+    refine_yaw = jnp.linspace(-step_size, step_size, args.Nyaw_refine, dtype=DTYPE).reshape(1, -1)
+
+    # Remove zeros from refine step to avoid the same angle
+    mask = (refine_yaw != 0)
+    refine_yaw_filtered = refine_yaw[mask]
+
+
+
+
+
