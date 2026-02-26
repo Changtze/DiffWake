@@ -84,7 +84,7 @@ def sample_initial_yaw_lhs(key,
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Optimise yaw angles in DiffWake/JAX with <TBC>"
+        description="Optimise yaw angles in DiffWake/JAX with SLSQP"
     )
     p.add_argument("--data-dir", type=Path, default=Path("data/horn"),
                    help="Directory with weather data and YAML configs.")
