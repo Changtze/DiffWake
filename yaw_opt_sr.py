@@ -31,7 +31,7 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--data-dir", type=Path, default=Path("data/horn"),
                    help="Directory with weather data and YAML configs.")
-    p.add_argument("--farm-yaml", type=str, default="cc_simple.yaml",
+    p.add_argument("--farm-yaml", type=str, default="gch.yaml",
                    help="Farm configuration YAML (relative to --data-dir).")
     p.add_argument("--turbine-yaml", type=str, default="vestas_v802MW.yaml",
                    help="Turbine configuration YAML (relative to --data-dir).")
@@ -40,8 +40,8 @@ def parse_args() -> argparse.Namespace:
 
     p.add_argument("--Nyaw", type=int, default=5, help="Number of first yaw angles to consider (serial run)")
     p.add_argument("--Nyaw-refine", type=int, default=4, help="Number of refined yaw angles to consider (refine run)")
-    p.add_argument("--gamma-max", type=float, default=30.0, help="Maximum allowable yaw angle in degrees")
-    p.add_argument("--gamma-min", type=float, default=-30.0, help="Minimum allowable yaw angle in degrees")
+    p.add_argument("--gamma-max", type=float, default=25.0, help="Maximum allowable yaw angle in degrees")
+    p.add_argument("--gamma-min", type=float, default=0.0, help="Minimum allowable yaw angle in degrees")
 
     p.add_argument("--float64", action="store_true", help="Enable float64. Default is float32.")
     p.add_argument("--out-dir", type=Path, default=Path("results/yaw_serial"), help="Base output directory.")
@@ -167,9 +167,7 @@ def main():
 
     zero_yaw = jnp.zeros((B, N), dtype=DTYPE)
 
-    # -------------------------------------------------------------
-    # ULTRA-FAST JAX SERIAL-REFINE ALGORITHM
-    # -------------------------------------------------------------
+    # Implement compiled Serial-Refine algorithm
     @jax.jit
     def sr_opt(initial_yaws: jax.Array) -> jax.Array:
         b_idx = jnp.arange(B)
@@ -177,7 +175,8 @@ def main():
         # Step size calculation for the refine pass
         step_size = jnp.abs(0.5 * (gamma_max - gamma_min) / (args.Nyaw - 1))
 
-        def fused_turbine_pass(yaws, depth_idx):
+        # def fused_turbine_pass(yaws, depth_idx):  # lax.scan
+        def fused_turbine_pass(depth_idx, yaws):  # lax.fori
             # 1. Dynamically get the turbine physical index for this depth across all B batches
             # sorted_coord_indices contains upstream -> downstream mapping per wind direction
             turb_indices_b = state.grid.sorted_coord_indices[:, depth_idx] # Shape (B,)
@@ -209,7 +208,7 @@ def main():
             cands_refine = jax.vmap(make_refine_cand)(offsets) # Shape (Nyr, B, N)
             powers_refine = jax.vmap(power_from_yaw)(cands_refine) # Shape (Nyr, B)
 
-            # Combine coarse winner with refine candidates to find the ultimate best
+            # Combine coarse
             cands_all = jnp.concatenate([best_yaws_coarse[None, ...], cands_refine], axis=0) # (1+Nyr, B, N)
             best_powers_coarse = powers_coarse[best_idx_coarse, b_idx]
             powers_all = jnp.concatenate([best_powers_coarse[None, :], powers_refine], axis=0) # (1+Nyr, B)
@@ -217,18 +216,15 @@ def main():
             best_idx_all = jnp.argmax(powers_all, axis=0) # Shape (B,)
             best_yaws_final = cands_all[best_idx_all, b_idx, :] # Shape (B, N)
 
-            return best_yaws_final, None
+            return best_yaws_final#, None
 
-        # Iterate down the farm. We don't optimize the very last turbine (depth N-1)
-        # because its wake does not impact any downstream turbines.
+        # Iterate from upstream to downstream. Dont optimise the last turbine
         depth_indices = jnp.arange(N - 1)
-        final_yaws, _ = jax.lax.scan(fused_turbine_pass, initial_yaws, depth_indices)
-
+        # final_yaws, _ = jax.lax.scan(fused_turbine_pass, initial_yaws, depth_indices)
+        final_yaws = jax.lax.fori_loop(0, N-1, fused_turbine_pass, initial_yaws)
         return final_yaws
 
-    # -------------------------------------------------------------
     # EXECUTION & LOGGING
-    # -------------------------------------------------------------
     baseline_power = power_from_yaw(zero_yaw)
     total_baseline_MW = jnp.sum(baseline_power * weights)
     print(f"Baseline mean power (MW): {float(total_baseline_MW):.6f}")
@@ -242,8 +238,6 @@ def main():
     t0 = time.time()
     opt_yaws = sr_opt(zero_yaw).block_until_ready()
     elapsed_time = time.time() - t0
-
-    print(f"Opt_yaws: {jnp.rad2deg(opt_yaws)}")
 
     # Extract optimized powers
     opt_case_powers = power_from_yaw(opt_yaws)
@@ -267,6 +261,7 @@ def main():
         gamma_max=float(args.gamma_max),
         dtype="float64" if DTYPE == jnp.float64 else "float32",
         elapsed_time=float(elapsed_time),
+        num_turbines=int(N)
     )
 
     save_run(

@@ -72,7 +72,7 @@ def make_yaw_runner(state: State):
 
     else:
         def _loop_with_yaw(yaw_angles_sorted: jnp.ndarray):
-            def body(st, ii):
+            def body(ii, st):
                 ii32 = lax.convert_element_type(ii, jnp.int32)
                 st_next, _ = sequential_solve_step(
                     st, ii32, params,
@@ -85,13 +85,13 @@ def make_yaw_runner(state: State):
                     enable_yaw_added_recovery=enable_yaw_added_recovery,
                     enable_transverse_velocities=enable_transverse_velocities
                 )
-                return st_next, None
+                return st_next#, None
 
-            # fori_loop since we only need the final state
-            # final_state = lax.fori_loop(0, T, body, init)
+            # fori_loop since we only need the final state. If enabling, swittch ii and st around in the body function
+            final_state = lax.fori_loop(0, T, body, init)
 
             # Scan loop
-            final_state, _ = lax.scan(body, init, jnp.arange(T))
+            # final_state, _ = lax.scan(body, init, jnp.arange(T))
             return to_result(final_state)
 
     # Single compiled function taking only yaw

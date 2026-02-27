@@ -1,4 +1,4 @@
-name: CC
+name: GCH
 description: Horns Rev 1 using Gauss-Curl Hybrid model
 floris_version: v3.0.0
 
@@ -16,15 +16,18 @@ solver:
 
 farm:
   layout_x:
-  - 0.0
-  - 600.0
-  - 1200.0
-  - 0.0
-  - 600.0
-  - 1200.0
-  - 0.0
-  - 600.0
-  - 1200.0
+    - 0.0
+    - 630.0
+    - 1260.0
+#  - 0.0
+#  - 600.0
+#  - 1200.0
+#  - 0.0
+#  - 600.0
+#  - 1200.0
+#  - 0.0
+#  - 600.0
+#  - 1200.0
 #  - 0
 #  - 68
 #  - 137
@@ -50,15 +53,18 @@ farm:
 #  - 1530
 
   layout_y:
-  - 0.0
-  - 0.0
-  - 0.0
-  - 50.0
-  - 150.0
-  - 250.0
-  - 500
-  - 600
-  - 700.0
+    - 0.0
+    - 0.0
+    - 0.0
+#  - 0.0
+#  - 0.0
+#  - 0.0
+#  - 50.0
+#  - 150.0
+#  - 250.0
+#  - 500
+#  - 600
+#  - 700.0
 #  - 3891.0
 #  - 3335.0
 #  - 2779.0
@@ -85,6 +91,7 @@ farm:
 
   turbine_type:
   - !include vestas_v802MW.yaml
+#  - !include nrel_5MW.yaml
 
 flow_field:
   air_density: 1.225
@@ -95,7 +102,7 @@ flow_field:
   - 270.0
   wind_shear: 0.12
   wind_speeds:
-  - 13.5
+  - 9.6
   wind_veer: 0.0
 
 wake:
