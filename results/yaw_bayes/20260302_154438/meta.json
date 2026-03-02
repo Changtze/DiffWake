@@ -1,0 +1,17 @@
+{
+  "best_power_MW": 5.344625949859619,
+  "final_loss": -5.344625949859619,
+  "N_turbines": 3,
+  "timestamp": "2026-03-02 15:44:38",
+  "optimizer": "bayes-jax",
+  "maxiter": 200,
+  "patience": 10,
+  "min_delta": 0.0001,
+  "seed": 0,
+  "float64": false,
+  "gamma_min": 0.0,
+  "gamma_max": 25.0,
+  "diameter": 80.0,
+  "dtype": "float32",
+  "elapsed_time": 4.9612226486206055
+}
