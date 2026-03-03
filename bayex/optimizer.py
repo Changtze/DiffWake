@@ -166,7 +166,7 @@ class Optimizer:
         return opt_state
 
     @partial(jax.jit, static_argnames=('self', 'size'))
-    def sample(self, key, state, size=10_000):
+    def sample(self, key, state, size=1000):
         """
         Samples new parameters using the acquisition function.
 

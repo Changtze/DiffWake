@@ -14,8 +14,12 @@ from pathlib import Path
 import equinox
 
 import jax
-jax.config.update("jax_debug_nans", True)
-jax.config.update("jax_disable_jit", False)
+# jax.config.update("jax_compilation_cache_dir", "./tmp/slsqp_jax_cache")
+# jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
+# jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
+# jax.config.update("jax_persistent_cache_enable_xla_caches", "none")
+# jax.config.update("jax_debug_nans", False)
+# jax.config.update("jax_disable_jit", False)
 import jax.numpy as jnp
 
 import numpy as np
@@ -39,15 +43,6 @@ class YawConstraints:
 
     def maxs(self, dtype) -> jax.Array:
         return jnp.deg2rad(jnp.array([self.gamma_max], dtype=dtype))
-
-
-def yaw_penalty_sq(gamma: jax.Array,
-                   gamma_min: jax.Array,
-                   gamma_max: jax.Array,
-                   ) -> jax.Array:
-    violation_min = jax.nn.softplus(gamma_min - gamma)
-    violation_max = jax.nn.softplus(gamma - gamma_max)
-    return jnp.sum(violation_min + violation_max)
 
 
 def setup_dtype(use_float64: bool = True) -> jnp.dtype:
@@ -88,11 +83,11 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--data-dir", type=Path, default=Path("data/horn"),
                    help="Directory with weather data and YAML configs.")
-    p.add_argument("--farm-yaml", type=str, default="cc_simple.yaml",
+    p.add_argument("--farm-yaml", type=str, default="gch.yaml",
                    help="Farm configuration YAML (relative to --data-dir).")
     p.add_argument("--turbine-yaml", type=str, default="vestas_v802MW.yaml",
                    help="Turbine configuration YAML (relative to --data-dir).")
-    p.add_argument("--weather-npz", type=str, default="weather_data.npz",
+    p.add_argument("--weather-npz", type=str, default="benchmark.npz",
                    help="Weather data file (relative to --data-dir).")
 
     p.add_argument("--gamma-min", type=float, default=0.0, help="Minimum allowable yaw angle in degrees")
@@ -101,12 +96,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--init-mode", choices=["lhs", "perturb"], default="lhs",
                    help="How to initialize restarts.")
 
-    p.add_argument("--penalty-weight", type=float, default=1e2, help="Weight of yaw penalty term in objective.")
     p.add_argument("--restarts", type=int, default=1)
     p.add_argument("--max-iter", type=int, default=200, help="Maximum number of optimiser iterations.")
     p.add_argument("--patience", type=int, default=10, help="Early stop if loss change is less than min_delta")
     p.add_argument("--seed", type=int, default=0, help="Random seed.")
     p.add_argument("--min-delta", type=float, default=1e-4, help="Minimum change in loss to continue optimisation.")
+    p.add_argument("--lbfgs-memory", type=int, default=20, help="L-BFGS memory size.")
 
     p.add_argument("--float64", action="store_true", help="Enable float64. Default is float32.")
     p.add_argument("--out-dir", type=Path, default=Path("results/yaw_slsqp"), help="Base output directory.")
@@ -142,10 +137,7 @@ def build_state_runner(
 def make_losses(state,
                 runner,
                 weights: jax.Array,
-                penalty_weight: float,
                 dtype):
-
-    pw = jnp.asarray(penalty_weight, dtype=dtype)
 
     def loss_from_yaw(yaw_angles_flat: jnp.ndarray, args):
         """Physics-based objective: negative total farm power (weighted over wind cases)."""
@@ -186,15 +178,16 @@ def make_losses(state,
 
         return g
 
-    return loss_from_yaw, grad_from_yaw, pw
+    return loss_from_yaw, grad_from_yaw
 
 
 def save_run(out_dir: Path,
              *,
              best_yaw: jax.Array,
              best_power_MW: float,
+             baseline_power_MW: float,
+             power_increase_pct: float,
              final_loss: float,
-             final_yaw_penalty: float,
              per_case_power_MW: jax.Array,
              wind_dir_deg: np.ndarray,
              wind_speed: np.ndarray,
@@ -220,8 +213,9 @@ def save_run(out_dir: Path,
 
     meta = dict(
         best_power_MW=float(best_power_MW),
+        baseline_power_MW=float(baseline_power_MW),
+        power_increase_pct=float(power_increase_pct),
         final_loss=float(final_loss),
-        final_sep_penalty=float(final_yaw_penalty),
         N_turbines=int(best_yaw.shape[1]),
         timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         **config_meta,
@@ -262,51 +256,39 @@ def main():
     )
 
     # Non-zero arbitrary starting yaw
-    ref_yaw = jnp.full((1, N), 0.05, dtype=DTYPE)
+    baseline_yaw = jnp.full((1, N), 0.0, dtype=DTYPE)
+    ref_yaw = jnp.full((1, N), 0.0, dtype=DTYPE)
 
-    loss_from_yaw, grad_from_yaw, pw = make_losses(state, runner, weights, args.penalty_weight, DTYPE)
 
+    loss_from_yaw, grad_from_yaw = make_losses(state, runner, weights, DTYPE)
+    baseline_power = -loss_from_yaw(baseline_yaw, None)
 
     # Min and max yaw in radians
     gamma_min = yaw_constraints.mins(DTYPE)
     gamma_max = yaw_constraints.maxs(DTYPE)
 
     # n_ineq = yaw angle constraints * N_turbines
-    num_constraints = 2
-    n_ineq = num_constraints * N
 
-    # def ineq_constraint(x: jax.Array, args) -> jax.Array:
-    #     # x is natively (N,) because we pass a flattened initial guess
-    #     c1 = x - gamma_min[0]
-    #     c2 = gamma_max[0] - x
-    #     return jnp.concatenate([c1, c2])
-    bounds = jnp.tile(jnp.array([0.0, gamma_max[0]]), (N, 1))
+    bounds = jnp.tile(jnp.array([gamma_min[0], gamma_max[0]]), (N, 1))
 
     solver = SLSQP(
         max_steps=args.max_iter,
         atol=args.min_delta,
-        rtol=1e-6,
+        rtol=args.min_delta,
         bounds=bounds,
         obj_grad_fn=grad_from_yaw,
-        # n_ineq_constraints=n_ineq,
-        # ineq_constraint_fn=ineq_constraint,
-        lbfgs_memory=10,
+        lbfgs_memory=args.lbfgs_memory,
 
     )
     @equinox.filter_jit
     def run_slsqp(yaw_init):
         # Flatten to ensure 1D shape (N,) passes cleanly through the solver
         yaw_init_flat = yaw_init.ravel()
-
-        # lb = jnp.full_like(yaw_init_flat, gamma_min[0])
-        # ub = jnp.full_like(yaw_init_flat, gamma_max[0])
-
         sol = optx.minimise(
             fn=loss_from_yaw,
             solver=solver,
             y0=yaw_init_flat,
             throw=False,
-            # options=dict(bounds=(lb, ub))
         )
         # Reshape output back to (1, N) for the rest of your logging/eval code
         return sol.value.reshape(yaw_init.shape), sol.stats
@@ -325,7 +307,6 @@ def main():
     best_power = -jnp.inf
     best_yaw = None
     best_idx = -1
-    best_yaw_vio = None
     best_loss = None
 
     total_t0 = time.time()
@@ -356,9 +337,7 @@ def main():
             best_power = final_power
             best_yaw = best_yaw_m
             best_idx = m
-            best_yaw_vio = float(
-                yaw_penalty_sq(best_yaw_m, gamma_min, gamma_max)
-            )
+
             best_loss = float(final_loss)
 
     elapsed_time = time.time() - total_t0
@@ -391,7 +370,6 @@ def main():
         min_delta=float(args.min_delta),
         seed=int(args.seed),
         float64=bool(args.float64),
-        penalty_weight=float(args.penalty_weight),
         gamma_min=float(args.gamma_min),
         gamma_max=float(args.gamma_max),
         diameter=float(diameter),
@@ -404,8 +382,9 @@ def main():
         out_dir,
         best_yaw=best_yaw,
         best_power_MW=best_power,
+        baseline_power_MW=baseline_power,
+        power_increase_pct=float((best_power - baseline_power)/baseline_power * 100),
         final_loss=best_loss,
-        final_yaw_penalty=(0.0 if best_yaw_vio is None else best_yaw_vio),
         per_case_power_MW=per_case_power_MW,
         wind_dir_deg=wind_dir_deg,
         wind_speed=wind_speed_np,

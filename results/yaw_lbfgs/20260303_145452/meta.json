@@ -1,0 +1,21 @@
+{
+  "best_power_MW": 2.821003444098235,
+  "baseline_power_MW": -2.452646671351761,
+  "power_increase_pct": -215.01874595509744,
+  "final_loss": -2.821003444098235,
+  "N_turbines": 3,
+  "timestamp": "2026-03-03 14:54:52",
+  "optimizer": "optax.lbfgs+sw_zoom+projection_box",
+  "restarts": 3,
+  "maxiter": 200,
+  "patience": 200,
+  "min_delta": 1e-06,
+  "seed": 0,
+  "float64": true,
+  "gamma_min": 0.0,
+  "gamma_max": 25.0,
+  "diameter": 80.0,
+  "dtype": "float64",
+  "elapsed_time": 12.175594091415405,
+  "init_mode": "lhs"
+}

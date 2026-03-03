@@ -35,14 +35,16 @@ def parse_args() -> argparse.Namespace:
                    help="Farm configuration YAML (relative to --data-dir).")
     p.add_argument("--turbine-yaml", type=str, default="vestas_v802MW.yaml",
                    help="Turbine configuration YAML (relative to --data-dir).")
-    p.add_argument("--weather-npz", type=str, default="weather_data.npz",
+    p.add_argument("--weather-npz", type=str, default="benchmark.npz",
                    help="Weather data file (relative to --data-dir).")
 
+    p.add_argument("--Nyaw", type=int, default=5, help="Number of yaw angles to evaluate on coarse pass.")
+    p.add_argument("--Nyaw-refine", type=int, default=4, help="Number of yaw angles to evaluate on refine pass.")
     p.add_argument("--gamma-max", type=float, default=25.0, help="Maximum allowable yaw angle in degrees")
     p.add_argument("--gamma-min", type=float, default=0.0, help="Minimum allowable yaw angle in degrees")
 
     p.add_argument("--float64", action="store_true", help="Enable float64. Default is float32.")
-    p.add_argument("--out-dir", type=Path, default=Path("results/yaw_bayes"), help="Base output directory.")
+    p.add_argument("--out-dir", type=Path, default=Path("results/yaw_serial"), help="Base output directory.")
     return p.parse_args()
 
 def build_state_runner(
@@ -165,7 +167,7 @@ def main():
 
     zero_yaw = jnp.zeros((B, N), dtype=DTYPE)
 
-    # Implement compiled Serial-Refine algorithm
+    # Start Serial-Refine algorithm
     @jax.jit
     def sr_opt(initial_yaws: jax.Array) -> jax.Array:
         b_idx = jnp.arange(B)
@@ -217,7 +219,7 @@ def main():
             return best_yaws_final#, None
 
         # Iterate from upstream to downstream. Dont optimise the last turbine
-        depth_indices = jnp.arange(N - 1)
+        # depth_indices = jnp.arange(N - 1)
         # final_yaws, _ = jax.lax.scan(fused_turbine_pass, initial_yaws, depth_indices)
         final_yaws = jax.lax.fori_loop(0, N-1, fused_turbine_pass, initial_yaws)
         return final_yaws
@@ -252,6 +254,8 @@ def main():
 
     config_meta = dict(
         optimizer="serial-refine-jax",
+        baseline_power_MW=float(total_baseline_MW),
+        power_increase_pct=((float(total_opt_MW) - float(total_baseline_MW))/float(total_baseline_MW)* 100),
         Nyaw=int(args.Nyaw),
         Nyaw_refine=int(args.Nyaw_refine),
         float64=bool(args.float64),
@@ -259,7 +263,6 @@ def main():
         gamma_max=float(args.gamma_max),
         dtype="float64" if DTYPE == jnp.float64 else "float32",
         elapsed_time=float(elapsed_time),
-        num_turbines=int(N)
     )
 
     save_run(

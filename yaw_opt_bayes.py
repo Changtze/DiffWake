@@ -12,8 +12,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 import os
-# os.environ["XLA_FLAGS"] = "--xla_cpu_multi_thread_eigen=true " \
-#                           "--xla_force_host_platform_device_count=8"
 
 import jax
 import jax.numpy as jnp
@@ -74,15 +72,15 @@ def sample_initial_yaw_lhs(key,
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Optimise yaw angles in DiffWake/JAX with SLSQP"
+        description="Optimise yaw angles in DiffWake/JAX with Bayex"
     )
     p.add_argument("--data-dir", type=Path, default=Path("data/horn"),
                    help="Directory with weather data and YAML configs.")
-    p.add_argument("--farm-yaml", type=str, default="cc_simple.yaml",
+    p.add_argument("--farm-yaml", type=str, default="gch.yaml",
                    help="Farm configuration YAML (relative to --data-dir).")
     p.add_argument("--turbine-yaml", type=str, default="vestas_v802MW.yaml",
                    help="Turbine configuration YAML (relative to --data-dir).")
-    p.add_argument("--weather-npz", type=str, default="weather_data.npz",
+    p.add_argument("--weather-npz", type=str, default="benchmark.npz",
                    help="Weather data file (relative to --data-dir).")
 
     p.add_argument("--gamma-min", type=float, default=0.0, help="Minimum allowable yaw angle in degrees")
@@ -95,7 +93,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-iter", type=int, default=200, help="Maximum number of optimiser iterations.")
     p.add_argument("--patience", type=int, default=10, help="Early stop if loss change is less than min_delta")
     p.add_argument("--seed", type=int, default=0, help="Random seed.")
-    p.add_argument("--min-delta", type=float, default=1e-2, help="Minimum change in loss to continue optimisation.")
+    p.add_argument("--min-delta", type=float, default=1e-6, help="Minimum change in loss to continue optimisation.")
 
     p.add_argument("--float64", action="store_true", help="Enable float64. Default is float32.")
     p.add_argument("--out-dir", type=Path, default=Path("results/yaw_bayes"), help="Base output directory.")
@@ -156,6 +154,8 @@ def save_run(out_dir: Path,
              *,
              best_yaw: jax.Array,
              best_power_MW: float,
+             baseline_power_MW: float,
+             power_increase_pct: float,
              final_loss: float,
              per_case_power_MW: jax.Array,
              wind_dir_deg: np.ndarray,
@@ -182,6 +182,8 @@ def save_run(out_dir: Path,
 
     meta = dict(
         best_power_MW=float(best_power_MW),
+        baseline_power_MW=float(baseline_power_MW),
+        power_increase_pct=float(power_increase_pct),
         final_loss=float(final_loss),
         N_turbines=int(best_yaw.shape[1]),
         timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -222,8 +224,11 @@ def main():
         data_dir, args.farm_yaml, args.turbine_yaml, wind_dir_rad, wind_speed, turbulence, DTYPE
     )
 
+    baseline_yaw = jnp.full((1, N), 0.0, dtype=DTYPE)
+
     # Non-zero arbitrary starting yaw
     loss_from_yaw = make_losses(state, runner, weights, DTYPE)
+    baseline_power = -loss_from_yaw(baseline_yaw)
 
     # Min and max yaw in radians
     gamma_min = yaw_constraints.mins(DTYPE).item()
@@ -248,12 +253,28 @@ def main():
     # Note: EI and PI will default to their standard xi=0.01 as defined in the library
 
     # Define prior evaluations to initialise the GP
-    num_init_evals = 10  # number of initial evaluations
+    num_init_evals = int(3 * N) # number of initial evaluations = 2 * N_turbines. Conservative value for cheap hardware
     key, subkey = jax.random.split(key)
-    init_evals = sample_initial_yaw_lhs(key, num_init_evals, N, yaw_constraints, DTYPE)
 
+
+    init_evals = sample_initial_yaw_lhs(key, num_init_evals - 1, N, yaw_constraints, DTYPE)
+    unyawed_eval = jnp.zeros_like(init_evals[0])
+
+    # Not all initial samples should be LHS. Have one evaluation unyawed
+    init_evals = jnp.concatenate([init_evals, unyawed_eval.reshape(1, N)], axis=0)
     params = {f'x{i}': init_evals[:, i].astype(DTYPE) for i in range(N)}
+
     ys = jax.vmap(loss_from_yaw)(init_evals).astype(DTYPE)
+
+    # Memory debugging
+    # ys_list = []
+    # for i in range(num_init_evals):
+    #     # Pass a single row but keep it 2D (1, N) for the runner
+    #     single_loss = loss_from_yaw(init_evals[i])
+    #     jax.block_until_ready(single_loss) # Force execution and clear memory
+    #     ys_list.append(single_loss)
+    # ys = jnp.array(ys_list, dtype=DTYPE)
+
     opt_state = optimizer.init(ys, params)
 
     best_power = 0
@@ -271,23 +292,23 @@ def main():
         key, subkey = jax.random.split(key)
         params = optimizer.sample(subkey, opt_state)
         gamma = jnp.array([params[f'x{i}'] for i in range(N)])
-        loss = loss_from_yaw(gamma.reshape(1, 3))
-        opt_state = optimizer.fit(opt_state, loss, params)
+        loss = loss_from_yaw(gamma.reshape(1, N))
         jax.block_until_ready(loss)
+        loss_val = float(loss)
+        opt_state = optimizer.fit(opt_state, loss, params)
+
         last_iter = iter
 
         # Update best loss
-        if loss <= best_loss:
-            best_power = -float(loss)
-            best_yaw = gamma.reshape(1, 3)
-            best_loss = float(loss)
-            prev_loss = float(loss)
+        if loss_val <= best_loss:
+            best_power = -loss_val
+            best_yaw = gamma.reshape(1, N)
+            best_loss = loss_val
+            prev_loss = loss_val
 
-
-        print(f"Delta: {prev_loss - loss:.4f}, prev_loss: {prev_loss:.4f}, loss: {loss:.4f}")
-        if prev_loss - loss >= float(args.min_delta):
+        if prev_loss - loss_val >= float(args.min_delta):
             no_improve = 0
-            prev_loss = float(loss)
+            prev_loss = loss_val
         else:
             no_improve += 1
 
@@ -304,13 +325,13 @@ def main():
             break
     print(f"Bayesian optimisation: {time.time()-t0:.3f}s, iters={last_iter}")
 
-    final_loss = loss_from_yaw(gamma.reshape(1, 3))
+    final_loss = loss_from_yaw(gamma.reshape(1, N))
     jax.block_until_ready(final_loss)
     final_power = -float(final_loss)
 
     if final_power > best_power:
         best_power = final_power
-        best_yaw = gamma.reshape(1, 3)
+        best_yaw = gamma.reshape(1, N)
         best_loss = float(final_loss)
 
     elapsed_time = time.time() - t0
@@ -342,18 +363,23 @@ def main():
         min_delta=float(args.min_delta),
         seed=int(args.seed),
         acq=str(args.acq),
+        num_init_evals=int(num_init_evals),
         float64=bool(args.float64),
         gamma_min=float(args.gamma_min),
         gamma_max=float(args.gamma_max),
         diameter=float(diameter),
         dtype="float64" if DTYPE == jnp.float64 else "float32",
         elapsed_time=float(elapsed_time),
+        lcb_kappa=float(args.lcb_kappa),
+        ucb_kappa=float(args.ucb_kappa),
     )
 
     save_run(
         out_dir,
         best_yaw=best_yaw,
         best_power_MW=best_power,
+        baseline_power_MW=baseline_power,
+        power_increase_pct=((best_power - baseline_power)/baseline_power * 100),
         final_loss=best_loss,
         per_case_power_MW=per_case_power_MW,
         wind_dir_deg=wind_dir_deg,
