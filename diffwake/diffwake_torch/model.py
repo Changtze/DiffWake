@@ -2,7 +2,7 @@ import torch
 from pathlib import Path
 from typing import Optional
 from torch import Tensor
-from floris.utilities import load_yaml
+from floris_src.utilities import load_yaml
 from .grid import TurbineGrid
 from .flow_field import FlowField
 from .farm import Farm

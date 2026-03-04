@@ -1,0 +1,23 @@
+{
+  "best_power_MW": 60.75684457565688,
+  "baseline_power_MW": 59.17746826006574,
+  "power_increase_pct": 2.668881184051834,
+  "final_loss": -60.75684457565688,
+  "N_turbines": 60,
+  "timestamp": "2026-03-04 15:27:43",
+  "optimizer": "bayes-jax",
+  "maxiter": 200,
+  "patience": 200,
+  "min_delta": 1e-06,
+  "seed": 0,
+  "acq": "LCB",
+  "num_init_evals": 180,
+  "float64": true,
+  "gamma_min": 0.0,
+  "gamma_max": 25.0,
+  "diameter": 80.0,
+  "dtype": "float64",
+  "elapsed_time": 742.7473337650299,
+  "lcb_kappa": 2.576,
+  "ucb_kappa": 0.01
+}

@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--gamma-min", type=float, default=0.0, help="Minimum allowable yaw angle in degrees")
 
     p.add_argument("--float64", action="store_true", help="Enable float64. Default is float32.")
-    p.add_argument("--out-dir", type=Path, default=Path("results/yaw_serial"), help="Base output directory.")
+    p.add_argument("--out-dir", type=Path, default=Path("results/yaw_serial_runtime_tests"), help="Base output directory.")
     return p.parse_args()
 
 def build_state_runner(

@@ -15,7 +15,6 @@ import jax
 # DTYPE = set_dtype()
 
 
-
 def average_velocity_jax(v, method="cubic-mean"):
     if method == "simple-mean":
         return jnp.mean(v, axis=(-2, -1), keepdims=True, dtype=v.dtype)
@@ -81,9 +80,9 @@ def sequential_solve_step(
     turb_inflow = lax.dynamic_update_slice_in_dim(turb_inflow, u_sorted, ii, axis=1)
 
     u_i = lax.dynamic_index_in_dim(turb_inflow, ii, axis=1, keepdims=True)
-    v_i = lax.dynamic_index_in_dim(v_sorted, ii, axis=1, keepdims=True)
-    w_i = lax.dynamic_index_in_dim(w_sorted, ii, axis=1, keepdims=True)
-    ti_i = lax.dynamic_index_in_dim(ti, ii, axis=1, keepdims=True)
+    # v_i = lax.dynamic_index_in_dim(v_sorted, ii, axis=1, keepdims=True)
+    # w_i = lax.dynamic_index_in_dim(w_sorted, ii, axis=1, keepdims=True)
+    # ti_i = lax.dynamic_index_in_dim(ti, ii, axis=1, keepdims=True)
 
     # Calculate average velocity for turbine ii from its inflow
     turb_avg = average_velocity_jax(u_i)
@@ -142,8 +141,20 @@ def sequential_solve_step(
     )
 
     # Calculate transverse velocities
-    v_wake = jnp.zeros_like(v_sorted)
-    w_wake = jnp.zeros_like(w_sorted)
+    v_wake, w_wake = lax.cond(
+        enable_transverse_velocities,
+        lambda: calculate_transverse_velocity(
+            u_i, u_init, dudz_init,
+            x_coord - x_i, y_coord - y_i, z_coord,
+            params.rotor_diameter, params.hub_height,
+            yaw_i_expanded, turb_Cts_i, params.TSR, axial_i,
+            params.wind_shear, scale=2.0
+        ),
+        lambda: (jnp.zeros_like(v_sorted), jnp.zeros_like(w_sorted))
+    )
+
+    # v_wake = jnp.zeros_like(v_sorted)
+    # w_wake = jnp.zeros_like(w_sorted)
 
 
     if enable_transverse_velocities:

@@ -1,0 +1,115 @@
+name: GCH
+description: 20-turbine randomised cluster with mean inter-turbine spacing 3.5D
+floris_version: v4
+logging:
+  console:
+    enable: true
+    level: WARNING
+  file:
+    enable: false
+    level: WARNING
+solver:
+  type: turbine_grid
+  turbine_grid_points: 3
+farm:
+  layout_x:
+  - 1087.4705152685747
+  - 713.5434310206692
+  - 1866.073821751499
+  - 2654.848074851402
+  - 2185.6627790080865
+  - 400.5847205565815
+  - 21.319504522783973
+  - 1597.090520158627
+  - 400.9399846245831
+  - 2425.6547623556726
+  - 1616.0873386477047
+  - 757.9458058774371
+  - 2049.2443879080574
+  - 2448.9028645111744
+  - 2859.249731621474
+  - 1174.7101492242534
+  - 1745.3254778376297
+  - 0.0
+  - 3247.3353961995927
+  - 1185.4301972531864
+  layout_y:
+  - 1035.1139328417944
+  - 0.0
+  - 3038.5368344908684
+  - 891.1850384781384
+  - 872.980882388802
+  - 352.16408251773953
+  - 82.3947996449474
+  - 2045.865707204408
+  - 1043.5777882314328
+  - 1819.3917178346278
+  - 1589.6351642986174
+  - 1342.020480653318
+  - 2604.133008671125
+  - 1343.782521685996
+  - 2007.868194311319
+  - 589.6707861885235
+  - 758.480229170743
+  - 798.4550430841531
+  - 1688.9795415112676
+  - 1518.935763979454
+  turbine_type:
+  - !include vestas_v802MW.yaml
+flow_field:
+  air_density: 1.225
+  reference_wind_height: -1
+  turbulence_intensities:
+  - 0.09
+  wind_directions:
+  - 270.0
+  wind_shear: 0.12
+  wind_speeds:
+  - 13.5
+  wind_veer: 0.0
+wake:
+  model_strings:
+    combination_model: sosfs
+    deflection_model: gauss
+    turbulence_model: crespo_hernandez
+    velocity_model: gauss
+  enable_secondary_steering: true
+  enable_yaw_added_recovery: true
+  enable_active_wake_mixing: false
+  enable_transverse_velocities: true
+  wake_deflection_parameters:
+    gauss:
+      ad: 0.0
+      alpha: 0.58
+      bd: 0.0
+      beta: 0.077
+      dm: 1.0
+      ka: 0.38
+      kb: 0.004
+    jimenez:
+      ad: 0.0
+      bd: 0.0
+      kd: 0.05
+  wake_velocity_parameters:
+    cc:
+      a_s: 0.179367259
+      b_s: 0.0118889215
+      c_s1: 0.0563691592
+      c_s2: 0.13290157
+      a_f: 3.11
+      b_f: -0.68
+      c_f: 2.41
+      alpha_mod: 1.0
+    gauss:
+      alpha: 0.58
+      beta: 0.077
+      ka: 0.38
+      kb: 0.004
+    jensen:
+      we: 0.05
+  wake_turbulence_parameters:
+    crespo_hernandez:
+      initial: 0.1
+      constant: 0.5
+      ai: 0.8
+      downstream: -0.32

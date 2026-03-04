@@ -96,7 +96,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--min-delta", type=float, default=1e-6, help="Minimum change in loss to continue optimisation.")
 
     p.add_argument("--float64", action="store_true", help="Enable float64. Default is float32.")
-    p.add_argument("--out-dir", type=Path, default=Path("results/yaw_bayes"), help="Base output directory.")
+    p.add_argument("--out-dir", type=Path, default=Path("results/yaw_bayes_runtime_tests"), help="Base output directory.")
     return p.parse_args()
 
 

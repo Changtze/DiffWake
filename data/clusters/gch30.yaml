@@ -1,0 +1,135 @@
+name: GCH
+description: 30-turbine randomised cluster with mean inter-turbine spacing 3.5D
+floris_version: v4
+logging:
+  console:
+    enable: true
+    level: WARNING
+  file:
+    enable: false
+    level: WARNING
+solver:
+  type: turbine_grid
+  turbine_grid_points: 3
+farm:
+  layout_x:
+  - 2296.172915069706
+  - 2036.5329082276544
+  - 1064.5115334562827
+  - 2690.52203833345
+  - 2956.302002869628
+  - 1376.1634342735385
+  - 2499.232812217631
+  - 960.9476354459052
+  - 762.1263784495368
+  - 1645.2214826581178
+  - 901.449409937441
+  - 0.0
+  - 289.4666480413606
+  - 948.9054784559257
+  - 880.1844259426596
+  - 652.6007412047512
+  - 2037.765581073416
+  - 489.22956384716076
+  - 1184.749530915512
+  - 448.47577805659444
+  - 402.3896769615925
+  - 326.8908055021345
+  - 1395.493839419927
+  - 1845.7888998805042
+  - 508.30227505418986
+  - 1404.6263259400598
+  - 89.66409147383274
+  - 1093.6733520939827
+  - 763.3303368832401
+  - 704.6290864709129
+  layout_y:
+  - 2210.358204912366
+  - 3015.6775244620985
+  - 3174.4947625991254
+  - 1962.527669118387
+  - 2921.90105323646
+  - 1187.566035065016
+  - 2926.040576899522
+  - 760.4479501401624
+  - 0.0
+  - 2760.037679243413
+  - 1227.950135589529
+  - 3387.1938324376993
+  - 3052.31207702388
+  - 3646.005740164634
+  - 2418.742228462982
+  - 429.3548057435346
+  - 2569.031749433519
+  - 4415.000927318615
+  - 2737.069605583525
+  - 1311.494143034617
+  - 3802.765131088769
+  - 858.7475912394675
+  - 2351.423391040955
+  - 2109.2383848159293
+  - 2154.8538529174666
+  - 3647.0673994651493
+  - 4227.647674288135
+  - 2037.2461517001184
+  - 4075.127995625424
+  - 2872.112045962206
+  turbine_type:
+  - !include vestas_v802MW.yaml
+flow_field:
+  air_density: 1.225
+  reference_wind_height: -1
+  turbulence_intensities:
+  - 0.09
+  wind_directions:
+  - 270.0
+  wind_shear: 0.12
+  wind_speeds:
+  - 13.5
+  wind_veer: 0.0
+wake:
+  model_strings:
+    combination_model: sosfs
+    deflection_model: gauss
+    turbulence_model: crespo_hernandez
+    velocity_model: gauss
+  enable_secondary_steering: true
+  enable_yaw_added_recovery: true
+  enable_active_wake_mixing: false
+  enable_transverse_velocities: true
+  wake_deflection_parameters:
+    gauss:
+      ad: 0.0
+      alpha: 0.58
+      bd: 0.0
+      beta: 0.077
+      dm: 1.0
+      ka: 0.38
+      kb: 0.004
+    jimenez:
+      ad: 0.0
+      bd: 0.0
+      kd: 0.05
+  wake_velocity_parameters:
+    cc:
+      a_s: 0.179367259
+      b_s: 0.0118889215
+      c_s1: 0.0563691592
+      c_s2: 0.13290157
+      a_f: 3.11
+      b_f: -0.68
+      c_f: 2.41
+      alpha_mod: 1.0
+    gauss:
+      alpha: 0.58
+      beta: 0.077
+      ka: 0.38
+      kb: 0.004
+    jensen:
+      we: 0.05
+  wake_turbulence_parameters:
+    crespo_hernandez:
+      initial: 0.1
+      constant: 0.5
+      ai: 0.8
+      downstream: -0.32
