@@ -268,7 +268,6 @@ def main():
     gamma_max = yaw_constraints.maxs(DTYPE)
 
     # n_ineq = yaw angle constraints * N_turbines
-
     bounds = jnp.tile(jnp.array([gamma_min[0], gamma_max[0]]), (N, 1))
 
     solver = SLSQP(
@@ -297,7 +296,7 @@ def main():
 
     if args.init_mode == "lhs":
         yaw0 = sample_initial_yaw_lhs(key, args.restarts, N, yaw_constraints, DTYPE)
-    else:
+    else:  # should be for perturb mode
         if args.restarts > 1:
             subkey = jax.random.split(key, 1)[0]
             yaw0 = sample_initial_yaw_lhs(subkey, args.restarts - 1, N, yaw_constraints, DTYPE)
