@@ -229,10 +229,11 @@ def main():
     total_baseline_MW = jnp.sum(baseline_power * weights)
     print(f"Baseline mean power (MW): {float(total_baseline_MW):.6f}")
 
-    print("Compiling JAX graph and running warmup...")
-    t0 = time.time()
-    _ = sr_opt(zero_yaw).block_until_ready()
-    print(f"Warmup took {time.time()-t0:.3f}s")
+    # print("Compiling JAX graph and running warmup...")
+    # t0 = time.time()
+    # _ = sr_opt(zero_yaw).block_until_ready()
+    # compile_time = time.time() - t0
+    # print(f"Warmup took {compile_time:.3f}s")
 
     print(f"Running Serial-Refine (Nyaw={args.Nyaw}, Nrefine={args.Nyaw_refine})...")
     t0 = time.time()
@@ -249,8 +250,8 @@ def main():
     print(f"Power Uplift: {float(uplift):.3f}%")
 
     # Output formatting
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_dir = args.out_dir / stamp
+    # stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = args.out_dir / f"cluster_{N}"
 
     config_meta = dict(
         optimizer="serial-refine-jax",

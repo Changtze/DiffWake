@@ -2,9 +2,9 @@
   "best_power_MW": 78.08422044219864,
   "baseline_power_MW": 78.08422044219864,
   "power_increase_pct": 0.0,
-  "final_loss": -78.08422044219864,
+  "final_loss": -1.0,
   "N_turbines": 80,
-  "timestamp": "2026-03-04 14:44:16",
+  "timestamp": "2026-03-06 09:32:53",
   "optimizer": "slsqp-jax",
   "restarts": 3,
   "maxiter": 200,
@@ -16,6 +16,6 @@
   "gamma_max": 25.0,
   "diameter": 80.0,
   "dtype": "float64",
-  "elapsed_time": 41.802491426467896,
+  "elapsed_time": 37.86218047142029,
   "init_mode": "lhs"
 }

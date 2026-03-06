@@ -1,10 +1,10 @@
 {
-  "best_power_MW": 94.67571378554284,
+  "best_power_MW": 94.67587442365746,
   "baseline_power_MW": 91.83828464893821,
-  "power_increase_pct": 3.0895929159075726,
-  "final_loss": -94.67571378554284,
+  "power_increase_pct": 3.08976783001364,
+  "final_loss": -1.0308976783001365,
   "N_turbines": 90,
-  "timestamp": "2026-03-04 14:45:23",
+  "timestamp": "2026-03-06 09:34:13",
   "optimizer": "slsqp-jax",
   "restarts": 3,
   "maxiter": 200,
@@ -16,6 +16,6 @@
   "gamma_max": 25.0,
   "diameter": 80.0,
   "dtype": "float64",
-  "elapsed_time": 65.6075530052185,
+  "elapsed_time": 77.45649838447571,
   "init_mode": "lhs"
 }

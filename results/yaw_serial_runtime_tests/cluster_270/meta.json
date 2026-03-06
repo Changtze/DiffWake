@@ -1,0 +1,15 @@
+{
+  "best_power_MW": 273.7019852254739,
+  "N_turbines": 270,
+  "timestamp": "2026-03-06 13:03:51",
+  "optimizer": "serial-refine-jax",
+  "baseline_power_MW": 260.2161794263159,
+  "power_increase_pct": 5.182539313615864,
+  "Nyaw": 5,
+  "Nyaw_refine": 4,
+  "float64": true,
+  "gamma_min": 0.0,
+  "gamma_max": 25.0,
+  "dtype": "float64",
+  "elapsed_time": 108.16661834716797
+}

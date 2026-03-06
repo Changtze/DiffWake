@@ -239,7 +239,7 @@ def init_dynamic_state(grid, flow, velocity_model_name: str) -> DynamicState:
     zeros = jnp.zeros((B, T, Ny, Nz), dtype=DTYPE)
     ti = jnp.broadcast_to(flow.turbulence_intensities[:, None, None, None].astype(DTYPE), (B, T, 3, 3))
 
-    Ctmp        = None
+    Ctmp = None
     ct_acc = None
 
     if velocity_model_name == "cc":

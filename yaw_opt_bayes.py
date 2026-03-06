@@ -228,7 +228,11 @@ def main():
 
     # Non-zero arbitrary starting yaw
     loss_from_yaw = make_losses(state, runner, weights, DTYPE)
-    baseline_power = -loss_from_yaw(baseline_yaw)
+    baseline_power = -loss_from_yaw(baseline_yaw)  # positive, MW
+
+    # Normalised loss function
+    def normalised_loss(y):
+        return loss_from_yaw(y) / baseline_power # negative, MW
 
     # Min and max yaw in radians
     gamma_min = yaw_constraints.mins(DTYPE).item()
@@ -240,7 +244,7 @@ def main():
     domain = {f'x{i}': bayex.domain.Real(gamma_min, gamma_max) for i in range(N)}
 
     # Initialize the Optimizer with the base acquisition string
-    optimizer = bayex.Optimizer(domain=domain, maximize=False, acq=args.acq)
+    optimizer = bayex.Optimizer(domain=domain, maximize=False, acq=args.acq)  # maximize = True otherwise we get a double negative
 
     # Overwrite the acquisition function to inject custom kappas if applicable
     acq_upper = args.acq.upper()
@@ -264,7 +268,7 @@ def main():
     init_evals = jnp.concatenate([init_evals, unyawed_eval.reshape(1, N)], axis=0)
     params = {f'x{i}': init_evals[:, i].astype(DTYPE) for i in range(N)}
 
-    ys = jax.vmap(loss_from_yaw)(init_evals).astype(DTYPE)
+    ys = jax.vmap(normalised_loss)(init_evals).astype(DTYPE)
 
     # Memory debugging
     # ys_list = []
@@ -277,22 +281,28 @@ def main():
 
     opt_state = optimizer.init(ys, params)
 
-    best_power = 0
-    best_yaw = None
-    best_loss = jnp.inf
+    best_power = baseline_power
+    best_yaw = np.array(baseline_yaw)
+    best_loss = float(normalised_loss(baseline_yaw))
 
     last_iter = 0
     no_improve = 0
 
     prev_loss = jnp.inf
 
+    print(f"Baseline loss: {best_loss}")
+    print(f"Baseline power: {baseline_power:.6f} MW")
+
     t0 = time.time()
     for iter in range(1, args.max_iter + 1):
         t1 = time.time()
         key, subkey = jax.random.split(key)
+
         params = optimizer.sample(subkey, opt_state)
         gamma = jnp.array([params[f'x{i}'] for i in range(N)])
-        loss = loss_from_yaw(gamma.reshape(1, N))
+
+        loss = normalised_loss(gamma.reshape(1, N))
+
         jax.block_until_ready(loss)
         loss_val = float(loss)
         opt_state = optimizer.fit(opt_state, loss, params)
@@ -301,20 +311,22 @@ def main():
 
         # Update best loss
         if loss_val <= best_loss:
-            best_power = -loss_val
+            best_power = -loss_val * baseline_power
             best_yaw = gamma.reshape(1, N)
             best_loss = loss_val
-            prev_loss = loss_val
 
-        if prev_loss - loss_val >= float(args.min_delta):
-            no_improve = 0
+            if prev_loss - loss_val >= 0:
+                no_improve = 0
+            else:
+                no_improve += 1
+
             prev_loss = loss_val
         else:
             no_improve += 1
 
         if iter % 1 == 0:
             print(
-                f"Iter {iter:04d}, loss={float(loss):.6e}  "
+                f"Iter {iter:04d}, loss={float(loss):.6e}, best={float(best_loss):.6e} "
                 f"No improvement count = {no_improve}, time={time.time()-t1:.3f}s"
             )
 
@@ -325,14 +337,6 @@ def main():
             break
     print(f"Bayesian optimisation: {time.time()-t0:.3f}s, iters={last_iter}")
 
-    final_loss = loss_from_yaw(gamma.reshape(1, N))
-    jax.block_until_ready(final_loss)
-    final_power = -float(final_loss)
-
-    if final_power > best_power:
-        best_power = final_power
-        best_yaw = gamma.reshape(1, N)
-        best_loss = float(final_loss)
 
     elapsed_time = time.time() - t0
     print(f"Best mean power (MW): {best_power:.6f}")
@@ -350,8 +354,8 @@ def main():
     ) / 1e6
     per_case_power_MW = jnp.sum(pow_mw,  axis=1)
 
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_dir = args.out_dir / stamp
+    # stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = args.out_dir / f"cluster_{N}"
     wind_dir_deg = np.asarray(jnp.rad2deg(wind_dir_rad), dtype=float)
     wind_speed_np = np.asarray(wind_speed, dtype=float)
     weights_np = np.asarray(weights.reshape(-1), dtype=float)

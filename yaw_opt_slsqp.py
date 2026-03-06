@@ -162,7 +162,7 @@ def make_losses(state,
         loss, g = jax.value_and_grad(loss_from_yaw)(yaw_angles_flat, args)
 
         # Sanitization of gradient
-        g = jnp.nan_to_num(g, nan=1e-6, posinf=1e-1, neginf=-1e-1)
+        g = jnp.nan_to_num(g, nan=1e-6, posinf=0.2, neginf=-0.2)
 
         # 2. Print the current state at runtime
         # jax.debug.print(
@@ -263,6 +263,11 @@ def main():
     loss_from_yaw, grad_from_yaw = make_losses(state, runner, weights, DTYPE)
     baseline_power = -loss_from_yaw(baseline_yaw, None)
 
+    # Normalise the loss per farm case
+    def normalised_loss(y, args):
+        raw_loss = loss_from_yaw(y, args)
+        return raw_loss / baseline_power
+
     # Min and max yaw in radians
     gamma_min = yaw_constraints.mins(DTYPE)
     gamma_max = yaw_constraints.maxs(DTYPE)
@@ -284,7 +289,7 @@ def main():
         # Flatten to ensure 1D shape (N,) passes cleanly through the solver
         yaw_init_flat = yaw_init.ravel()
         sol = optx.minimise(
-            fn=loss_from_yaw,
+            fn=normalised_loss,
             solver=solver,
             y0=yaw_init_flat,
             throw=False,
@@ -319,17 +324,16 @@ def main():
         t0 = time.time()
         best_yaw_m, stats = run_slsqp(yaw_init)
 
-
         jax.block_until_ready(best_yaw_m)
 
         # Must pass a flat array and args=None for evaluation check
-        v = loss_from_yaw(best_yaw_m.ravel(), None)
+        v = normalised_loss(best_yaw_m.ravel(), None)
 
         print(f"SLSQP time (restart {m}): {time.time()-t0:.3f}s  "
               f"iters={stats['num_steps']} final_loss={float(v):.6e}")
 
         final_loss = v
-        final_power = -float(final_loss)
+        final_power = -float(final_loss) * baseline_power
         print(f"[restart {m}] final mean power (MW): {final_power:.6f}")
 
         if final_power > best_power:
