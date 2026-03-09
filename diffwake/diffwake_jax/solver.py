@@ -5,14 +5,6 @@ from .util import Params, DynamicState, smooth_step
 from .wake_deflection.gauss import calculate_transverse_velocity, wake_added_yaw, yaw_added_turbulence_mixing
 import jax.numpy as jnp
 from jax import lax
-import jax
-
-# jax.config.update("jax_enable_x64", True)
-#
-# def set_dtype():
-#     return jnp.float64 if jax.config.x64_enabled else jnp.float32
-#
-# DTYPE = set_dtype()
 
 
 def average_velocity_jax(v, method="cubic-mean"):
@@ -80,12 +72,10 @@ def sequential_solve_step(
     turb_inflow = lax.dynamic_update_slice_in_dim(turb_inflow, u_sorted, ii, axis=1)
 
     u_i = lax.dynamic_index_in_dim(turb_inflow, ii, axis=1, keepdims=True)
-    # v_i = lax.dynamic_index_in_dim(v_sorted, ii, axis=1, keepdims=True)
-    # w_i = lax.dynamic_index_in_dim(w_sorted, ii, axis=1, keepdims=True)
-    # ti_i = lax.dynamic_index_in_dim(ti, ii, axis=1, keepdims=True)
 
     # Calculate average velocity for turbine ii from its inflow
     turb_avg = average_velocity_jax(u_i)
+
     # vel_avg__i should be (B, 1, 1, 1)
     vel_avg__i = turb_avg
 
@@ -96,10 +86,7 @@ def sequential_solve_step(
     turb_Cts_i = thrust_function(velocities = vel_avg__i,
                                  yaw_angles = yaw_i,
                                  tilt_angles = tilt_i)[:, :, None, None]
-    # Don't need ct_acc here
-    # In FLORIS: axial_induction_i = axial_induction(...) with ix_filter=[i]
-    # This expects velocities as the whole field, and returns a slice for i
-    # Our axial_induction_func seems to support this.
+
     
     # We need axial_induction_i which is (B, 1, 1, 1)
     axial_i = axial_induction_func(
@@ -107,8 +94,6 @@ def sequential_solve_step(
     # The axial_induction_func returns (B, 1), we need (B, 1, 1, 1)
     axial_i = axial_i[:, :, None, None]
 
-    # For turbulence model, we need turb_aIs (all turbines? No, usually just for turbine i)
-    # FLORIS uses axial_induction_i in turbulence_model.function
     turb_aIs = axial_i
 
     u_i = lax.dynamic_index_in_dim(turb_inflow, ii, axis=1, keepdims=True)
@@ -152,20 +137,6 @@ def sequential_solve_step(
         ),
         lambda: (jnp.zeros_like(v_sorted), jnp.zeros_like(w_sorted))
     )
-
-    # v_wake = jnp.zeros_like(v_sorted)
-    # w_wake = jnp.zeros_like(w_sorted)
-
-
-    if enable_transverse_velocities:
-        v_wake, w_wake = calculate_transverse_velocity(
-            u_i, u_init, dudz_init,
-            x_coord - x_i, y_coord - y_i, z_coord,
-            params.rotor_diameter, params.hub_height,
-            yaw_i_expanded, turb_Cts_i, params.TSR, axial_i,
-            params.wind_shear, scale=2.0
-        )
-
 
     # Calculate yaw added recovery and update the TI field
     if enable_yaw_added_recovery:
@@ -358,18 +329,17 @@ def cc_solver_step(
         U_free=u_init, wind_veer=params.wind_veer
     )
 
-
-    v_wake = jnp.zeros_like(v_sorted)
-    w_wake = jnp.zeros_like(w_sorted)
-    if enable_transverse_velocities:
-        v_wake, w_wake= calculate_transverse_velocity(
+    v_wake, w_wake = lax.cond(
+        enable_transverse_velocities,
+        lambda: calculate_transverse_velocity(
             u_i, u_init, dudz_init,
             x_coord - x_i, y_coord - y_i, z_coord,
             params.rotor_diameter, params.hub_height,
             yaw_i, turb_Cts_i, params.TSR, axial_i,
             params.wind_shear, scale=2.0
-        )
-
+        ),
+        lambda: (jnp.zeros_like(v_sorted), jnp.zeros_like(w_sorted))
+    )
 
 
     if enable_yaw_added_recovery:

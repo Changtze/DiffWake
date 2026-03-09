@@ -8,24 +8,6 @@ from .wake_deflection import GaussVelocityDeflection
 from .wake_turbulence import CrespoHernandez
 
 
-# only really useful if using __attrs_post_init__ so no need for it
-MODEL_MAP = {
-    "combination_model": {
-        "sosfs": SOSFS
-    },
-    "deflection_model": {
-        "gauss": GaussVelocityDeflection
-    },
-    "turbulence_model": {
-        "crespo_hernandez": CrespoHernandez
-    },
-    "velocity_model": {
-        "cc": CumulativeGaussCurlVelocityDeficit,
-        "gauss": GaussVelocityDeficit
-    }
-}
-
-
 @struct.dataclass
 class WakeModelManager:
     velocity_model: Any         

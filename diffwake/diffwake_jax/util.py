@@ -19,7 +19,9 @@ _CURRENT_DTYPE = jnp.float32
 
 def set_precision(precision: str):
     """
-    Sets the JAX floating point precision.
+    Sets the JAX floating point precision. FP32 is the minimum recommended numerical precision for scientific computing.
+    Although JAX is mainly used for deep learning research where FP64 is undesirable, FP64 is important for accuracy in
+    numerical simulations.
     
     Args:
         precision: One of 'fp16', 'fp32', 'fp64' (or 'half', 'single', 'double').
@@ -131,7 +133,7 @@ class Params:
     enable_yaw_added_recovery: bool = False
 
 
-# General result object
+# Final DynamicState object
 class Result(NamedTuple):
     turb_u_wake: jnp.ndarray
     u_sorted: jnp.ndarray

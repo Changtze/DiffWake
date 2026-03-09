@@ -21,7 +21,7 @@ def make_yaw_runner(state: State):
     const, _, tilt_angles = make_constants(state)
     init = init_dynamic_state(state.grid, state.flow, state.wake.model_strings['velocity_model'])
 
-    # Put once on device & stop grads through constants
+    # Put once on device & don't calculate gradients for constants
     const       = tree.map(lambda x: lax.stop_gradient(device_put(x)), const)
     tilt_angles = lax.stop_gradient(device_put(tilt_angles))
     init        = tree.map(lambda x: lax.stop_gradient(device_put(x)), init)
@@ -57,9 +57,10 @@ def make_yaw_runner(state: State):
                 return st_next
 
             # fori_loop since we only need the final state
-            # final_state = lax.fori_loop(0, T, body, init)
+            final_state = lax.fori_loop(0, T, body, init)
 
-            final_state, _ = lax.scan(body, init, jnp.arange(T))
+
+            # final_state, _ = lax.scan(body, init, jnp.arange(T))
             return to_result(final_state)
 
     elif velocity_model_name == "turbopark":

@@ -107,6 +107,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--out-dir", type=Path, default=Path("results/yaw_slsqp"), help="Base output directory.")
     return p.parse_args()
 
+OUT_DIR = None
 
 def build_state_runner(
         data_dir: Path,
@@ -134,6 +135,17 @@ def build_state_runner(
     return state, runner, N
 
 
+def log_to_file(yaw_angles, loss_val):
+    with open(rf"{OUT_DIR}/opt_log.jsonl", "a") as f:
+        # Convert JAX arrays to standard Python floats/lists
+        # We also convert to degrees for easier human reading
+        log_entry = {
+            "loss": float(loss_val),
+            "yaw_angles_deg": np.rad2deg(np.array(yaw_angles)).tolist()
+        }
+        f.write(json.dumps(log_entry) + "\n")
+
+
 def make_losses(state,
                 runner,
                 weights: jax.Array,
@@ -154,6 +166,7 @@ def make_losses(state,
         case_power = jnp.sum(pow_mw, axis=1)
         return -jnp.sum(case_power * weights) / 1e6  # convert to megawatts
 
+
     @jax.jit
     def grad_from_yaw(yaw_angles_flat: jnp.ndarray, args):
         """Calculate the gradient and print the diagnostics."""
@@ -164,6 +177,8 @@ def make_losses(state,
         # Sanitization of gradient
         g = jnp.nan_to_num(g, nan=1e-6, posinf=0.2, neginf=-0.2)
 
+        # Callback
+        jax.debug.callback(log_to_file, yaw_angles_flat, loss)
         # 2. Print the current state at runtime
         # jax.debug.print(
         #     "| Loss: {loss:.8f} | Max Grad: {max_g:.8f} | NaN in Grad? {is_nan}",
@@ -227,6 +242,8 @@ def save_run(out_dir: Path,
 
 
 def main():
+    global OUT_DIR
+    OUT_DIR = args.out_dir
     # Setup and I/O
     args = parse_args()
     DTYPE = setup_dtype(args.float64)
@@ -284,6 +301,8 @@ def main():
         lbfgs_memory=args.lbfgs_memory,
 
     )
+
+
     @equinox.filter_jit
     def run_slsqp(yaw_init):
         # Flatten to ensure 1D shape (N,) passes cleanly through the solver
@@ -361,6 +380,7 @@ def main():
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = args.out_dir / stamp
+
     wind_dir_deg = np.asarray(jnp.rad2deg(wind_dir_rad), dtype=float)
     wind_speed_np = np.asarray(wind_speed, dtype=float)
     weights_np = np.asarray(weights.reshape(-1), dtype=float)

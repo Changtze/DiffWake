@@ -354,8 +354,8 @@ def main():
     ) / 1e6
     per_case_power_MW = jnp.sum(pow_mw,  axis=1)
 
-    # stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_dir = args.out_dir / f"cluster_{N}"
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = args.out_dir / stamp
     wind_dir_deg = np.asarray(jnp.rad2deg(wind_dir_rad), dtype=float)
     wind_speed_np = np.asarray(wind_speed, dtype=float)
     weights_np = np.asarray(weights.reshape(-1), dtype=float)
