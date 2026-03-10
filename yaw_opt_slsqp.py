@@ -243,9 +243,9 @@ def save_run(out_dir: Path,
 
 def main():
     global OUT_DIR
-    OUT_DIR = args.out_dir
     # Setup and I/O
     args = parse_args()
+    OUT_DIR = args.out_dir
     DTYPE = setup_dtype(args.float64)
 
     yaw_constraints = YawConstraints(args.gamma_min, args.gamma_max)
@@ -299,7 +299,6 @@ def main():
         bounds=bounds,
         obj_grad_fn=grad_from_yaw,
         lbfgs_memory=args.lbfgs_memory,
-
     )
 
 

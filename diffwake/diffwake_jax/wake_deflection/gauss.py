@@ -46,7 +46,9 @@ class GaussVelocityDeflection:
 
         denom = sqrt2 * (4 * self.alpha * turb_I_i +
                          2 * self.beta  * (one - jnp.sqrt(one - ct_i)))
-        x0 = D * cos_y * (1 + jnp.sqrt(one - ct_i * cos_y)) / denom + x_i
+        # x0 = D * cos_y * (1 + jnp.sqrt(one - ct_i * cos_y)) / denom + x_i
+        x0 = D * cos_y * (1 + jnp.sqrt(one - ct_i )) / denom + x_i
+
 
         k = self.ka * turb_I_i + self.kb
 

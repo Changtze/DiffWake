@@ -197,7 +197,8 @@ def cosine_loss_axial_induction(
 
     misalignment = jnp.cos(yaw_angles) * jnp.cos(tilt_diff_rad)
 
-    sqrt_term = jnp.sqrt(jnp.clip(1.0 - ct * misalignment, 0.0, 1.0))
+    # sqrt_term = jnp.sqrt(jnp.clip(1.0 - ct * misalignment, 0.0, 1.0))
+    sqrt_term = jnp.sqrt(jnp.clip(1.0 - ct, 0.0, 1.0))
     a = 0.5 / misalignment * (1.0 - sqrt_term)
 
     return a

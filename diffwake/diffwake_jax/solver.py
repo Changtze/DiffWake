@@ -63,7 +63,6 @@ def sequential_solve_step(
     z_i = lax.dynamic_index_in_dim(z_c, ii, axis=1, keepdims=True)
 
     # Define the current flow field at this step
-    # u_sorted is what FLORIS calls flow_field.u_sorted
     u_sorted = u_init - turb_u_wake
     
     # Update turb_inflow for turbine ii
@@ -83,14 +82,14 @@ def sequential_solve_step(
     tilt_i = lax.dynamic_index_in_dim(tilt_angles, ii, axis=1, keepdims=True)
 
     # Calculate thrust coefficients and axial induction
-    turb_Cts_i = thrust_function(velocities = vel_avg__i,
+    turb_Cts_i = thrust_function(velocities = u_i,#vel_avg__i,
                                  yaw_angles = yaw_i,
                                  tilt_angles = tilt_i)[:, :, None, None]
 
     
     # We need axial_induction_i which is (B, 1, 1, 1)
     axial_i = axial_induction_func(
-        u_sorted, yaw_angles, tilt_angles, ix_filter=ii)
+        turb_inflow, yaw_angles, tilt_angles, ix_filter=ii)  #
     # The axial_induction_func returns (B, 1), we need (B, 1, 1, 1)
     axial_i = axial_i[:, :, None, None]
 
@@ -178,14 +177,11 @@ def sequential_solve_step(
     )
 
     # Accumulate the wake field
-    # In GCH/sequential solver, we combine the NEW deficit into the EXISTING wake field
+    # Combine GCH deficit into the existing wake
     wake_field, _ = combination_model(
         turb_u_wake,
         velocity_deficit * u_init,
     )
-
-    # Update the flow field
-    u_sorted = u_init - wake_field  # Index 0 since combination_model returns a tupl
 
     # Calculate turbulence intensity
     wake_added_ti = turbulence_model(
@@ -285,6 +281,7 @@ def cc_solver_step(
     yaw_i  = lax.dynamic_index_in_dim(yaw_angles, ii, axis=1, keepdims=True)  # (B,1)
     tilt_i = lax.dynamic_index_in_dim(tilt_angles,ii, axis=1, keepdims=True)  # (B,1)
 
+    u_i_plane = lax.dynamic_index_in_dim(turb_inflow, ii, axis=1, keepdims=True)
     turb_Cts_i = thrust_function(velocities = vel_avg__i,
                                yaw_angles = yaw_i,
                                tilt_angles = tilt_i)[:,:,None, None]        # (B,T,1,1)

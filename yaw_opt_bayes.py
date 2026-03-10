@@ -194,10 +194,13 @@ def save_run(out_dir: Path,
         json.dump(meta, f, indent=2)
     return None
 
+OUT_DIR = None
 
 def main():
     # Setup and I/O
     args = parse_args()
+    global OUT_DIR
+    OUT_DIR = args.out_dir
     DTYPE = setup_dtype(args.float64)
 
     yaw_constraints = YawConstraints(args.gamma_min, args.gamma_max)
@@ -293,6 +296,14 @@ def main():
     print(f"Baseline loss: {best_loss}")
     print(f"Baseline power: {baseline_power:.6f} MW")
 
+    def log_to_file(yaw_angles, loss_val):
+        with open(rf"{OUT_DIR}/opt_log.jsonl", "a") as f:
+            log_entry = {
+                "loss": float(loss_val),
+                "yaw_angles_deg": np.rad2deg(yaw_angles).tolist()
+            }
+            f.write(json.dumps(log_entry) + "\n")
+
     t0 = time.time()
     for iter in range(1, args.max_iter + 1):
         t1 = time.time()
@@ -300,8 +311,9 @@ def main():
 
         params = optimizer.sample(subkey, opt_state)
         gamma = jnp.array([params[f'x{i}'] for i in range(N)])
-
         loss = normalised_loss(gamma.reshape(1, N))
+
+        log_to_file(gamma, float(-loss) * float(baseline_power))
 
         jax.block_until_ready(loss)
         loss_val = float(loss)
