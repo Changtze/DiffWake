@@ -295,9 +295,13 @@ def main():
 
     print(f"Baseline loss: {best_loss}")
     print(f"Baseline power: {baseline_power:.6f} MW")
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    opt_log_path = OUT_DIR / stamp
+
+    opt_log_path.mkdir(parents=True, exist_ok=True)
 
     def log_to_file(yaw_angles, loss_val):
-        with open(rf"{OUT_DIR}/opt_log.jsonl", "a") as f:
+        with open(rf"{opt_log_path}/opt_log.jsonl", "a") as f:
             log_entry = {
                 "loss": float(loss_val),
                 "yaw_angles_deg": np.rad2deg(yaw_angles).tolist()
@@ -366,7 +370,6 @@ def main():
     ) / 1e6
     per_case_power_MW = jnp.sum(pow_mw,  axis=1)
 
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = args.out_dir / stamp
     wind_dir_deg = np.asarray(jnp.rad2deg(wind_dir_rad), dtype=float)
     wind_speed_np = np.asarray(wind_speed, dtype=float)
