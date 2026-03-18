@@ -95,6 +95,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--diameter", type=float, default=80.0, help="Turbine rotor diameter (m).")
     p.add_argument("--init-mode", choices=["lhs", "perturb"], default="lhs",
                    help="How to initialize restarts.")
+    p.add_argument("--y0", type=float, default=0.0, help="initial yaw angle (degrees)")
 
     p.add_argument("--restarts", type=int, default=1)
     p.add_argument("--max-iter", type=int, default=200, help="Maximum number of optimiser iterations.")
@@ -108,6 +109,7 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 OUT_DIR = None
+OPT_LOG_PATH = None
 
 def build_state_runner(
         data_dir: Path,
@@ -136,7 +138,7 @@ def build_state_runner(
 
 
 def log_to_file(yaw_angles, loss_val):
-    with open(rf"{OUT_DIR}/opt_log.jsonl", "a") as f:
+    with open(rf"{OPT_LOG_PATH}/opt_log.jsonl", "a") as f:
         # Convert JAX arrays to standard Python floats/lists
         # We also convert to degrees for easier human reading
         log_entry = {
@@ -243,9 +245,14 @@ def save_run(out_dir: Path,
 
 def main():
     global OUT_DIR
+    global OPT_LOG_PATH
+
     # Setup and I/O
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     args = parse_args()
     OUT_DIR = args.out_dir
+    OPT_LOG_PATH = OUT_DIR / stamp
+    OPT_LOG_PATH.mkdir(parents=True, exist_ok=True)
     DTYPE = setup_dtype(args.float64)
 
     yaw_constraints = YawConstraints(args.gamma_min, args.gamma_max)
@@ -274,11 +281,14 @@ def main():
 
     # Non-zero arbitrary starting yaw
     baseline_yaw = jnp.full((1, N), 0.0, dtype=DTYPE)
-    ref_yaw = jnp.full((1, N), 0.0, dtype=DTYPE)
+    ref_yaw_val = jnp.deg2rad(args.y0)
+    ref_yaw = jnp.full((1, N), ref_yaw_val, dtype=DTYPE)
 
 
     loss_from_yaw, grad_from_yaw = make_losses(state, runner, weights, DTYPE)
     baseline_power = -loss_from_yaw(baseline_yaw, None)
+
+
 
     # Normalise the loss per farm case
     def normalised_loss(y, args):
@@ -317,9 +327,9 @@ def main():
 
     key = jax.random.PRNGKey(args.seed)
 
-    if args.init_mode == "lhs":
+    if args.init_mode == "lhs":  # initialise the optimiser with a Latin Hypercube sample
         yaw0 = sample_initial_yaw_lhs(key, args.restarts, N, yaw_constraints, DTYPE)
-    else:  # should be for perturb mode
+    else:
         if args.restarts > 1:
             subkey = jax.random.split(key, 1)[0]
             yaw0 = sample_initial_yaw_lhs(subkey, args.restarts - 1, N, yaw_constraints, DTYPE)
@@ -377,7 +387,6 @@ def main():
     ) / 1e6
     per_case_power_MW = jnp.sum(pow_mw,  axis=1)
 
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = args.out_dir / stamp
 
     wind_dir_deg = np.asarray(jnp.rad2deg(wind_dir_rad), dtype=float)
@@ -398,6 +407,7 @@ def main():
         dtype="float64" if DTYPE == jnp.float64 else "float32",
         elapsed_time=float(elapsed_time),
         init_mode=args.init_mode,
+        y0=args.y0
     )
 
     save_run(
