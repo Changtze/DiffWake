@@ -1,6 +1,8 @@
 import jax.numpy as jnp
 import math
 from flax import struct
+# import jax
+# jax.config.update("jax_enable_x64", True)
 
 
 @struct.dataclass
@@ -34,20 +36,26 @@ class GaussVelocityDeflection:
         k03    = jnp.asarray(0.3 ,  dtype)
         exp_1_12 = jnp.exp(jnp.asarray(1/12, dtype))
         exp_1_3  = jnp.exp(jnp.asarray(1/3 , dtype))
-        veer   = jnp.rad2deg(jnp.asarray(wind_veer, dtype))
+        veer   = jnp.deg2rad(jnp.asarray(wind_veer, dtype))
 
+        # Opposite sign convention for this model
         yaw   = -yaw_i
         cos_y = jnp.cos(yaw)
         one   = jnp.ones_like(cos_y)
 
-
         uR = U_free * ct_i * cos_y / (2. * (one - jnp.sqrt(one - ct_i * cos_y)))
         u0 = U_free * jnp.sqrt(one - ct_i)
+
 
         denom = sqrt2 * (4 * self.alpha * turb_I_i +
                          2 * self.beta  * (one - jnp.sqrt(one - ct_i)))
         # x0 = D * cos_y * (1 + jnp.sqrt(one - ct_i * cos_y)) / denom + x_i
-        x0 = D * cos_y * (1 + jnp.sqrt(one - ct_i )) / denom + x_i
+        x0 = D * cos_y * (1 + jnp.sqrt(one - ct_i * cos_y)) / denom + x_i
+        # print(f"D: {D}")
+        # print(f"cos_y: {cos_y}")
+        # print(f"num: {1 + jnp.sqrt(one - ct_i * cos_y)}")
+        # print(f"denom: {denom}")
+        # print(f"x0: {x0}")
 
 
         k = self.ka * turb_I_i + self.kb
@@ -87,9 +95,6 @@ class GaussVelocityDeflection:
 
         return delta_near + delta_far
 
-
-def gamma(D, velocity, Uinf, Ct, scale=1.0):
-    return scale * (jnp.pi / 8) * D * velocity * Uinf * Ct
 
 NUM_EPS = 0.001
 NUM_EPS_2 = 1e-7
@@ -200,21 +205,25 @@ def yaw_added_turbulence_mixing(u_i, I_i, v_i, w_i, turb_v_i, turb_w_i):
     return I_mixing[:, None, None, None]
 
 def gamma(D, velocity, Uinf, Ct, scale=1.0):
-    return scale * (jnp.pi / 8) * D * velocity * Uinf * Ct
+    return scale * (jnp.pi / 8.0) * D * velocity * Uinf * Ct
 
 def wake_added_yaw(
     u_i, v_i, u_initial, delta_y, z_i,
     rotor_diameter, hub_height, ct_i,
     tip_speed_ratio, axial_induction_i, wind_shear, scale=1.0
 ):
+    """
+    What angle would've produced that same average spanwise velocity
+    """
     NUM_EPS = 0.001
     D = rotor_diameter
     HH = hub_height
     Ct = ct_i
     TSR = tip_speed_ratio
     aI = axial_induction_i
-
     avg_v = jnp.mean(v_i, axis=(2, 3))
+
+    # flow parameters
     Uinf = jnp.mean(u_initial, axis=(1, 2, 3), keepdims=True)
     eps_gain = 0.2
     eps = eps_gain * D
@@ -224,6 +233,8 @@ def wake_added_yaw(
 
     vel_bottom = ((HH - D / 2) / HH) ** wind_shear * jnp.ones_like(Ct)
     Gamma_bottom = -gamma(D, vel_bottom, Uinf, Ct, scale)
+
+
 
     mean_cubed = jnp.mean(u_i**3, axis=(2, 3), keepdims=True)
 
@@ -237,15 +248,17 @@ def wake_added_yaw(
     def vortex_velocity(Gamma, z_shift):
         z_ = z_i - z_shift + NUM_EPS
         r_ = yLocs**2 + z_**2
-        core_shape = 1 - jnp.exp(-r_ / eps**2)
+        core_shape = 1 - jnp.exp(-r_ / (eps**2))
         return (Gamma * z_) / (2 * jnp.pi * r_) * core_shape
 
+    # print(f"Gamma_top: {Gamma_top}, Gamma_bottom: {Gamma_bottom}, Gamma_wake_rotation: {Gamma_wake_rotation}")
     v_top = jnp.mean(vortex_velocity(Gamma_top, HH + D / 2), axis=(2, 3))
     v_bottom = jnp.mean(vortex_velocity(Gamma_bottom, HH - D / 2), axis=(2, 3))
     v_core = jnp.mean(vortex_velocity(Gamma_wake_rotation, HH), axis=(2, 3))
 
+    # print(f"v_top: {v_top}, v_bottom: {v_bottom}, v_core: {v_core}")
     val = 2.0 * (avg_v - v_core) / (v_top + v_bottom)
-    val = jnp.clip(val, -0.99999, 0.99999)
-    y = 0.5 * jnp.arcsin(val)
+    val = jnp.clip(val, -0.99999999, 0.99999999)
+    y = 0.5 * jnp.arcsin(val) # return in radians
 
     return y[:, :, None, None]

@@ -215,6 +215,7 @@ def power(
 ) -> jnp.ndarray:
 
     rotor_avg_vels = average_velocity(velocities, cubature_weights)
+
     v_eff = rotor_velocity_air_density_correction(rotor_avg_vels, air_density, power_thrust_table["ref_air_density"])
     v_eff = rotor_velocity_yaw_cosine_correction(power_thrust_table["cosine_loss_exponent_yaw"], yaw_angles, v_eff)
     # v_eff = rotor_velocity_tilt_cosine_correction(

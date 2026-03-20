@@ -289,7 +289,6 @@ def main():
     baseline_power = -loss_from_yaw(baseline_yaw, None)
 
 
-
     # Normalise the loss per farm case
     def normalised_loss(y, args):
         raw_loss = loss_from_yaw(y, args)
