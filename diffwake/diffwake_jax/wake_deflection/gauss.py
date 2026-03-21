@@ -130,7 +130,7 @@ def calculate_transverse_velocity(
     scale: float = 1.0,
 ):
     dtype = u_i.dtype
-    NUM_EPS  = jnp.asarray(1e-10, dtype)
+    NUM_EPS  = jnp.asarray(0.001, dtype)
     EPS_GAIN = jnp.asarray(0.2,   dtype)
     D   = jnp.asarray(rotor_diameter, dtype)
     HH  = jnp.asarray(hub_height,     dtype)

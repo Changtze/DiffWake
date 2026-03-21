@@ -56,6 +56,7 @@ def sequential_solve_step(
     )
 
 
+
     # Constants for turbine ii
     B, T, Ny, Nz = x_coord.shape
 
@@ -73,12 +74,22 @@ def sequential_solve_step(
 
     u_i = lax.dynamic_index_in_dim(turb_inflow, ii, axis=1, keepdims=True)
     # print(f"u_i: {u_i}")
-
+    # print(f"=== DiffWake Step {ii} ===")
+    # print(f"Turbine inflow: {turb_inflow}")
+    # print(f"Turb_u_wake: {turb_u_wake}")
+    # jax.debug.print(
+    #     "=== DiffWake Step {ii} ===\n"
+    #     "  1. Turb_inflow       : {turb_inflow:.15f}\n"
+    #     "  2. Turb_u_wake      : {turb_u_wake:.15f}\n",
+    #     ii=ii,
+    #     turb_u_wake=turb_u_wake,
+    #     turb_inflow=turb_inflow,
+    # )
     # Calculate average velocity for turbine ii from its inflow
-    turb_avg = average_velocity_jax(u_i)
+    # turb_avg = average_velocity_jax(u_i)
 
     # vel_avg__i should be (B, 1, 1, 1)
-    vel_avg__i = turb_avg
+    # vel_avg__i = turb_avg
 
     yaw_i = lax.dynamic_index_in_dim(yaw_angles, ii, axis=1, keepdims=True)
     tilt_i = lax.dynamic_index_in_dim(tilt_angles, ii, axis=1, keepdims=True)
@@ -138,7 +149,19 @@ def sequential_solve_step(
     # print(f"U_free: {u_init}")
     # print(f"wind_veer: {params.wind_veer}")
 
-    print(f"Yaw eff: {yaw_eff}")
+    # jax.debug.print(
+    #     "=== DiffWake Step {ii} ===\n"
+    #     "  1. Inflow u_i (mean)       : {u_i_mean:.15f}\n"
+    #     "  2. Thrust ct_i (mean)      : {ct_i_mean:.15f}\n"
+    #     "  3. Axial Induction (mean)  : {a_i_mean:.15f}\n"
+    #     "  4. Yaw eff (mean)          : {yaw_eff_mean:.15f}\n",
+    #     ii=ii,
+    #     u_i_mean=jnp.mean(u_i),
+    #     ct_i_mean=jnp.mean(turb_Cts_i),
+    #     a_i_mean=jnp.mean(turb_aIs),
+    #     yaw_eff_mean=jnp.mean(yaw_eff)
+    # )
+
     def_field = deflection_model(
         x_i, yaw_eff, ti_i, turb_Cts_i,
         params.rotor_diameter,
@@ -149,6 +172,11 @@ def sequential_solve_step(
     # print("DiffWake deflection: ", def_field)
 
     # Calculate transverse velocities
+    # print(f"gridx: {x_coord - x_i}")
+    # print(f"gridy: {y_coord - y_i}")
+    # print(f"z: {z_coord}")
+    # print(f"shear: {params.wind_shear}")
+
     v_wake, w_wake = lax.cond(
         enable_transverse_velocities,
         lambda: calculate_transverse_velocity(
@@ -156,16 +184,24 @@ def sequential_solve_step(
             x_coord - x_i, y_coord - y_i, z_coord,
             params.rotor_diameter, params.hub_height,
             yaw_i_expanded, turb_Cts_i, params.TSR, axial_i,
-            params.wind_shear, scale=2.0
+            params.wind_shear, scale=1.0
         ),
         lambda: (jnp.zeros_like(v_sorted), jnp.zeros_like(w_sorted))
     )
+    # print(f"v_wake: {v_wake}")
+    # print(f"w_wake: {w_wake}")
+
 
     # Calculate yaw added recovery and update the TI field
     if enable_yaw_added_recovery:
         v_wake_i = lax.dynamic_index_in_dim(v_wake, ii, axis=1, keepdims=True)
         w_wake_i = lax.dynamic_index_in_dim(w_wake, ii, axis=1, keepdims=True)
-
+        # print(f"u_i mean: {jnp.mean(u_i)}")
+        # print(f"ti_i mean: {jnp.mean(ti_i)}")
+        # print(f"v_i mean: {jnp.mean(v_i)}")
+        # print(f"w_i mean: {jnp.mean(w_i)}")
+        # print(f"v_wake_i mean: {jnp.mean(v_wake_i)}")
+        # print(f"w_wake_i mean: {jnp.mean(w_wake_i)}")
         I_mixing = yaw_added_turbulence_mixing(
             u_i,
             ti_i,
@@ -175,6 +211,9 @@ def sequential_solve_step(
             w_wake_i
         )
         gch_gain = 2.0
+        # print(f"I_mixing: {I_mixing}")
+        # print(f"Ti_i: {ti_i}")
+
         updated = (ti_i + gch_gain * I_mixing).astype(ti.dtype)
         # Sanitization for gradient safety
         updated = jnp.nan_to_num(updated, nan=0.0, posinf=0.0, neginf=0.0)
@@ -182,6 +221,9 @@ def sequential_solve_step(
         ti = lax.dynamic_update_slice_in_dim(ti, updated, ii, axis=1)
         # Update ti_i for use in velocity_model
         ti_i = updated
+
+
+    # print(f"Turbine {ii} TI: {ti}")
 
     # Calculate the velocity deficit and combine it with the wake field
     velocity_deficit, _ = velocity_model(
@@ -199,6 +241,7 @@ def sequential_solve_step(
         u_initial=u_init,
         wind_veer=params.wind_veer
     )
+    # print(f"vel def: {velocity_deficit}")
 
     # Accumulate the wake field
     # Combine GCH deficit into the existing wake
@@ -245,25 +288,15 @@ def sequential_solve_step(
     w_sorted = (w_sorted + w_wake).astype(w_sorted.dtype)
 
     # jax.debug.print(
-    #     "=== Step {ii} Detailed Debug ===\n"
-    #     "  1. Inflow u_i (mean)       : {u_i_mean:.10f}\n"
-    #     "  2. Thrust ct_i (mean)      : {ct_i_mean:.10f}\n"
-    #     "  3. Axial Induction (mean)  : {a_i_mean:.10f}\n"
-    #     "  4. Deflection Field (max)  : {defl_max:.10f}\n"
-    #     "  5. Velocity Deficit (max)  : {def_max:.10f}\n"
-    #     "  6. Acc. Wake Field (max)   : {wake_max:.10f}\n"
-    #     "  7. Acc. TI Field (max)     : {ti_max:.10f}\n"
-    #     "================================",
-    #     ii=ii,
-    #     u_i_mean=jnp.mean(u_i),
-    #     ct_i_mean=jnp.mean(turb_Cts_i),
-    #     a_i_mean=jnp.mean(turb_aIs),
+    #     "  5. Deflection Field (max)  : {defl_max:.18f}\n"
+    #     "  6. Velocity Deficit (max)  : {def_max:.18f}\n"
+    #     "  7. Acc. Wake Field (max)   : {wake_max:.18f}\n"
+    #     "  8. Acc. TI Field (max)     : {ti_max:.18f}\n",
     #     defl_max=jnp.max(jnp.abs(def_field)),
     #     def_max=jnp.max(velocity_deficit),
     #     wake_max=jnp.max(wake_field),
-    #     ti_max=jnp.max(ti_i) # Or turbine_turbulence_intensity depending on your naming
+    #     ti_max=jnp.max(ti)
     # )
-
 
     next_state = DynamicState(
         turb_u_wake=wake_field,

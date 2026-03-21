@@ -81,6 +81,12 @@ class GaussVelocityDeficit:
         sigma_z0 = rotor_diameter_i * 0.5 * jnp.sqrt(uR / (u_initial + u0))
         sigma_y0 = sigma_z0 * jnp.cos(yaw_angle) * jnp.cos(wind_veer)
 
+
+        # print(f"uR: {jnp.mean(uR)}")
+        # print(f"u0: {jnp.mean(u0)}")
+        # print(f"sigma_z0: {jnp.mean(sigma_z0)}")
+        # print(f"sigma_y0: {jnp.mean(sigma_y0)}")
+
         # Compute the bounds of the near and far wake regions and a mask
 
         # Start of the near wake
@@ -89,10 +95,20 @@ class GaussVelocityDeficit:
         # Start of the far wake
         x0 = jnp.ones_like(u_initial)
         x0 *= rotor_diameter_i * jnp.cos(yaw_angle) * (1 + jnp.sqrt(1 - ct_i) )
+        # print(f"1. x0: {jnp.mean(x0)}")
+
         x0 /= jnp.sqrt(2) * (
             4 * self.alpha * turbulence_intensity_i + 2 * self.beta * (1 - jnp.sqrt(1 - ct_i) )
         )
+        # print(f"sqrt(2): {jnp.sqrt(2)}")
+        # print(f"alpha: {self.alpha}")
+        # print(f"ti: {jnp.mean(turbulence_intensity_i):.25f}")
+        # print(f"beta: {self.beta}")
+        # print(f"ct_i: {jnp.sqrt(1-ct_i)}")
+        # print(f"2. x0: {x0}")
         x0 += x_i
+
+        # print(f"3. x0: {jnp.mean(x0)}")
 
         # Initialise velocity deficit array
         velocity_deficit = jnp.zeros_like(u_initial)
