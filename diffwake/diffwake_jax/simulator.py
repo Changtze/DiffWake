@@ -10,8 +10,6 @@ from .util import (init_dynamic_state, Params, DynamicState, Result, State, get_
                    )
 from .solver import cc_solver_step, sequential_solve_step, turbopark_solver, empirical_gauss_solver
 
-
-
 def simulate(state: State) -> Result:
     """Forward run with *fixed* yaw angles (no grad wrt yaw)."""
     axial_fn  = get_axial_induction_fn(state.flow, state.farm, state.grid)
