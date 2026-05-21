@@ -229,7 +229,7 @@ def make_epoch_batches(key, n_samples: int, batch_size: int) -> jnp.ndarray:
 # Training loop
 # -----------------------------------------------------------------------------
 def train_ti_model(
-    data_dir="data/smarteole",
+    data_dir="./data/smarteole",
     epochs=800,
     lr=1e-4,
     seed=0,

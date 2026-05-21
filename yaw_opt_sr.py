@@ -175,7 +175,6 @@ def main():
         # Step size calculation for the refine pass
         step_size = jnp.abs(0.5 * (gamma_max - gamma_min) / (args.Nyaw - 1))
 
-        # def fused_turbine_pass(yaws, depth_idx):  # lax.scan
         def fused_turbine_pass(depth_idx, yaws):  # lax.fori
             # 1. Dynamically get the turbine physical index for this depth across all B batches
             # sorted_coord_indices contains upstream -> downstream mapping per wind direction
