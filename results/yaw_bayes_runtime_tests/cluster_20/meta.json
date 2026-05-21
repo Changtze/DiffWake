@@ -1,8 +1,8 @@
 {
   "best_power_MW": 21.45928300260328,
   "baseline_power_MW": 21.42526843570551,
-  "power_increase_pct": 0.15875911660029046,
-  "final_loss": -1.0015875911660028,
+  "power_increase_pct": 1.65875911660029046,
+  "final_loss": -1.0165875911660028,
   "N_turbines": 20,
   "timestamp": "2026-03-06 14:37:25",
   "optimizer": "bayes-jax",

@@ -168,7 +168,6 @@ def make_losses(state,
         case_power = jnp.sum(pow_mw, axis=1)
         return -jnp.sum(case_power * weights) / 1e6  # convert to megawatts
 
-
     @jax.jit
     def grad_from_yaw(yaw_angles_flat: jnp.ndarray, args):
         """Calculate the gradient and print the diagnostics."""
@@ -309,7 +308,6 @@ def main():
         obj_grad_fn=grad_from_yaw,
         lbfgs_memory=args.lbfgs_memory,
     )
-
 
     @equinox.filter_jit
     def run_slsqp(yaw_init):
