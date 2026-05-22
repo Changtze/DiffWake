@@ -1,0 +1,20 @@
+{
+    "sr_data_floris": {
+        "baseline_power_MW": 63.50592840125507,
+        "per_case_power_MW": 74.6322270601,
+        "runtime": 103.723,
+        "power_increase_pct": 17.520094484005764
+    },
+    "slsqp_data_floris": {
+        "baseline_power_MW": 63.50592840125507,
+        "per_case_power_MW": 74.7013287619,
+        "runtime": 1358.293,
+        "power_increase_pct": 17.628905902938783
+    },
+    "bo_data_floris": {
+        "baseline_power_MW": 63.50592840125507,
+        "per_case_power_MW": 69.47952938810555,
+        "runtime": 6577.3838,
+        "power_increase_pct": 9.406367464005804
+    }
+}

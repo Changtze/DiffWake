@@ -1,8 +1,8 @@
 {
-  "best_power_MW": 10.531720707286333,
+  "best_power_MW": 10.556564745213493,
   "baseline_power_MW": 10.531720707286333,
-  "power_increase_pct": 0.0,
-  "final_loss": -1.0,
+  "power_increase_pct": 0.235897234817213,
+  "final_loss": -1.0023589723481721,
   "N_turbines": 10,
   "timestamp": "2026-03-06 09:29:44",
   "optimizer": "slsqp-jax",

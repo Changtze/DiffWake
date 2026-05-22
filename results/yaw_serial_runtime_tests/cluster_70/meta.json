@@ -1,5 +1,5 @@
 {
-  "best_power_MW": 71.13227427844447,
+  "best_power_MW":71.13227427844446,
   "N_turbines": 70,
   "timestamp": "2026-03-06 12:48:38",
   "optimizer": "serial-refine-jax",
