@@ -21,11 +21,23 @@ from diffwake.diffwake_jax.util import average_velocity_jax
 from diffwake.diffwake_jax.turbine.operation_models import power
 
 
-def setup_dtype(use_float64: bool = True) -> jnp.dtype:
-    jax.config.update("jax_enable_x64", use_float64)
-    return jnp.float64 if jax.config.x64_enabled else jnp.float32
+def setup_dtype(precision: str = "float32") -> jnp.dtype:
+    if precision in ("fp64", "float64"):
+        jax.config.update("jax_enable_x64", True)
+        return jnp.float64
+    elif precision in ("fp32", "float32"):
+        jax.config.update("jax_enable_x64", False)
+        return jnp.float32
+    elif precision in ("fp16", "float16"):
+        jax.config.update("jax_enable_x64", False)
+        return jnp.float16
+    elif precision in ("bf16", "bfloat16"):
+        jax.config.update("jax_enable_x64", False)
+        return jnp.bfloat16
+    else:
+        raise ValueError(f"Unknown precision: {precision}")
 
-def parse_args() -> argparse.Namespace:
+def parse_args(args=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Optimise yaw angles in DiffWake/JAX with Serial-Refine"
     )
@@ -43,9 +55,25 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--gamma-max", type=float, default=25.0, help="Maximum allowable yaw angle in degrees")
     p.add_argument("--gamma-min", type=float, default=0.0, help="Minimum allowable yaw angle in degrees")
 
-    p.add_argument("--float64", action="store_true", help="Enable float64. Default is float32.")
+    p.add_argument("--float64", action="store_true", help="Enable float64. Shortcut for --precision float64.")
+    p.add_argument("--precision", type=str, default="float32", choices=["float16", "float32", "float64", "bfloat16", "fp16", "fp32", "fp64", "bf16"], help="Floating point precision.")
     p.add_argument("--out-dir", type=Path, default=Path("results/yaw_serial"), help="Base output directory.")
-    return p.parse_args()
+    
+    # Use parse_known_args to ignore Jupyter/IPython specific arguments like -f
+    parsed, _ = p.parse_known_args(args)
+    return parsed
+
+OPT_LOG_PATH = None
+
+def log_to_file(yaw_angles, power_val):
+    with open(rf"{OPT_LOG_PATH}/opt_log.jsonl", "a") as f:
+        # Convert JAX arrays to standard Python floats/lists
+        # We also convert to degrees for easier human reading
+        log_entry = {
+            "mean_power": float(power_val),
+            "yaw_angles_deg": np.rad2deg(np.array(yaw_angles)).tolist()
+        }
+        f.write(json.dumps(log_entry) + "\n")
 
 def build_state_runner(
         data_dir: Path,
@@ -115,7 +143,25 @@ def save_run(out_dir: Path,
 
 def main():
     args = parse_args()
-    DTYPE = setup_dtype(args.float64)
+    run_optimization(args)
+
+def run_optimization(args):
+    global OPT_LOG_PATH
+    
+    precision = args.precision
+    if args.float64:
+        precision = "float64"
+    DTYPE = setup_dtype(precision)
+
+    # Output formatting
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # temp_str = args.weather_npz.split("_")
+    # stamp = f"yaw_var_{temp_str[4]}"
+
+    out_dir = args.out_dir / stamp
+    OPT_LOG_PATH = out_dir
+    OPT_LOG_PATH.mkdir(parents=True, exist_ok=True)
 
     Nys, Nyr = args.Nyaw, args.Nyaw_refine
     if not isinstance(Nys, int) or not isinstance(Nyr, int):
@@ -153,6 +199,12 @@ def main():
         data_dir, args.farm_yaml, args.turbine_yaml, wind_dir_rad, wind_speed, turbulence, DTYPE
     )
 
+    # Output High-Level Optimizer graph
+    print(f"Exporting HLO graph to {out_dir / 'hlo_graph.txt'}...")
+    lowered = runner.lower(jnp.zeros((B, N), dtype=DTYPE))
+    with open(out_dir / "hlo_graph.txt", "w") as f:
+        f.write(lowered.as_text())
+
     # Evaluates the power across all batches (wind cases)
     def power_from_yaw(yaw_angles: jnp.ndarray) -> jnp.ndarray:
         out = runner(yaw_angles)
@@ -166,6 +218,9 @@ def main():
         return jnp.sum(pow_mw, axis=1) / 1e6  # Returns shape (B,)
 
     zero_yaw = jnp.zeros((B, N), dtype=DTYPE)
+
+    # Start of full process timing (including potential JIT if not warmed up)
+    total_t0 = time.time()
 
     # Start Serial-Refine algorithm
     @jax.jit
@@ -215,6 +270,11 @@ def main():
             best_idx_all = jnp.argmax(powers_all, axis=0) # Shape (B,)
             best_yaws_final = cands_all[best_idx_all, b_idx, :] # Shape (B, N)
 
+            # Log current state
+            current_powers = powers_all[best_idx_all, b_idx]
+            mean_power = jnp.sum(current_powers * weights)
+            jax.debug.callback(log_to_file, best_yaws_final, mean_power)
+
             return best_yaws_final#, None
 
         # Iterate from upstream to downstream. Dont optimise the last turbine
@@ -239,18 +299,17 @@ def main():
     opt_yaws = sr_opt(zero_yaw).block_until_ready()
     elapsed_time = time.time() - t0
 
+    total_elapsed_time = time.time() - total_t0
+
     # Extract optimized powers
     opt_case_powers = power_from_yaw(opt_yaws)
     total_opt_MW = jnp.sum(opt_case_powers * weights)
 
     print(f"Execution took {elapsed_time:.3f}s")
+    print(f"Total time (inc. JIT): {total_elapsed_time:.3f}s")
     print(f"Optimised mean power (MW): {float(total_opt_MW):.6f}")
     uplift = ((total_opt_MW - total_baseline_MW) / total_baseline_MW) * 100
     print(f"Power Uplift: {float(uplift):.3f}%")
-
-    # Output formatting
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_dir = args.out_dir / stamp
 
     config_meta = dict(
         optimizer="serial-refine-jax",
@@ -263,6 +322,7 @@ def main():
         gamma_max=float(args.gamma_max),
         dtype="float64" if DTYPE == jnp.float64 else "float32",
         elapsed_time=float(elapsed_time),
+        total_elapsed_time=float(total_elapsed_time),
     )
 
     save_run(
@@ -275,6 +335,11 @@ def main():
         weights=np.asarray(weights, dtype=float),
         config_meta=config_meta,
     )
+
+    print("\nOptimal yaw angles (degrees):")
+    print(np.rad2deg(np.array(opt_yaws)))
+
+    return config_meta
 
 
 
