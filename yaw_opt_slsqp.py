@@ -180,17 +180,6 @@ def make_losses(state,
 
         # Callback
         jax.debug.callback(log_to_file, yaw_angles_flat, loss)
-        # 2. Print the current state at runtime
-        # jax.debug.print(
-        #     "| Loss: {loss:.8f} | Max Grad: {max_g:.8f} | NaN in Grad? {is_nan}",
-        #     loss=loss,
-        #     max_g=jnp.max(jnp.abs(g)),
-        #     is_nan=jnp.any(jnp.isnan(g))
-        # )
-        #
-        # # 3. Print the raw yaw angles (in degrees) and gradients
-        # jax.debug.print("Yaw (deg): {yaw}", yaw=jnp.rad2deg(yaw_angles_flat))
-        # jax.debug.print("Gradients: {g}\n", g=g)
 
         return g
 

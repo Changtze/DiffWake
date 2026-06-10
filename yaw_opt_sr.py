@@ -262,7 +262,6 @@ def run_optimization(args):
             cands_refine = jax.vmap(make_refine_cand)(offsets) # Shape (Nyr, B, N)
             powers_refine = jax.vmap(power_from_yaw)(cands_refine) # Shape (Nyr, B)
 
-            # Combine coarse
             cands_all = jnp.concatenate([best_yaws_coarse[None, ...], cands_refine], axis=0) # (1+Nyr, B, N)
             best_powers_coarse = powers_coarse[best_idx_coarse, b_idx]
             powers_all = jnp.concatenate([best_powers_coarse[None, :], powers_refine], axis=0) # (1+Nyr, B)
