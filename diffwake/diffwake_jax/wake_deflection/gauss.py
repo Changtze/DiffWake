@@ -97,7 +97,7 @@ class GaussVelocityDeflection:
 
 
 NUM_EPS = 0.001
-NUM_EPS_2 = 1e-7
+NUM_EPS_2 = 0.0
 EPS_GAIN = 0.2
 
 def gamma(D: float,
